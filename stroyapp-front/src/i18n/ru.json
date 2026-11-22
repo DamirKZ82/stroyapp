@@ -109,7 +109,9 @@
     "price_negotiable": "Цена договорная",
     "price_from": "от {{price}}",
     "items_label": "Прайс",
-    "items_show_all": "Показать весь прайс ({{count}})"
+    "items_show_all": "Показать весь прайс ({{count}})",
+    "verified": "Проверенный продавец",
+    "verified_long": "Проверенный продавец: БИН/ИИН сверен"
   },
   "listing": {
     "description": "Описание",
@@ -329,7 +331,18 @@
     "items_count_one": "{{count}} позиция",
     "items_count_few": "{{count}} позиции",
     "items_count_many": "{{count}} позиций",
-    "items_count_other": "{{count}} позиций"
+    "items_count_other": "{{count}} позиций",
+    "items_hidden_by_plan": "Клиенты видят только первые {{count}} позиций прайса. Остальные сохранены и появятся снова после оплаты Pro.",
+    "photos_works_label": "Фото работ",
+    "verify_title": "Проверенный продавец",
+    "verify_hint": "Пришлите БИН или ИИН — мы сверим его с реестром",
+    "bin_label": "БИН или ИИН",
+    "bin_invalid": "БИН или ИИН — 12 цифр",
+    "verify_send": "Отправить на проверку",
+    "verify_waiting": "На проверке",
+    "verify_done": "Проверено",
+    "verify_pro_note": "Значок «Проверенный» клиенты видят, пока оплачен тариф Pro.",
+    "bin_placeholder": "12 цифр"
   },
   "calendar": {
     "months": [
@@ -406,5 +419,46 @@
     "trip": "рейс",
     "object": "объект",
     "work": "весь объём"
+  },
+  "subscription": {
+    "title": "Тариф и оплата",
+    "open": "Тариф Pro",
+    "tier_none": "Пробный период ещё не начался",
+    "tier_trial": "Пробный период",
+    "tier_free": "Бесплатный тариф",
+    "tier_pro": "Pro",
+    "until": "Оплачен до {{date}}",
+    "trial_until": "Всё как в Pro до {{date}}",
+    "free_hint": "Пробный период закончился: в прайсе видно только первые {{count}} позиций.",
+    "none_hint_one": "Добавьте первое объявление — и {{count}} день всё работает как в Pro.",
+    "none_hint_few": "Добавьте первое объявление — и {{count}} дня всё работает как в Pro.",
+    "none_hint_many": "Добавьте первое объявление — и {{count}} дней всё работает как в Pro.",
+    "none_hint_other": "Добавьте первое объявление — и {{count}} дня всё работает как в Pro.",
+    "items_visible_one": "Клиентам видно до {{count}} позиции прайса",
+    "items_visible_few": "Клиентам видно до {{count}} позиций прайса",
+    "items_visible_many": "Клиентам видно до {{count}} позиций прайса",
+    "items_visible_other": "Клиентам видно до {{count}} позиции прайса",
+    "promoted": "Продвигается",
+    "pro_label": "Что даёт Pro",
+    "benefit_items_one": "Прайс до {{count}} позиции",
+    "benefit_items_few": "Прайс до {{count}} позиций",
+    "benefit_items_many": "Прайс до {{count}} позиций",
+    "benefit_items_other": "Прайс до {{count}} позиции",
+    "benefit_promoted": "Выше в поиске при сортировке по рейтингу",
+    "benefit_verified": "Значок «Проверенный продавец» после проверки БИН/ИИН",
+    "period_label": "Срок",
+    "period_1": "1 месяц",
+    "period_3": "3 месяца",
+    "period_12": "12 месяцев",
+    "per_month": "{{price}} в месяц",
+    "pay_hint": "Оплата картой на странице платёжного сервиса. Срок добавится к уже оплаченному.",
+    "pay": "Оплатить картой",
+    "extend": "Продлить картой",
+    "pay_unavailable": "Оплата картой пока недоступна. Чтобы подключить Pro, напишите на {{email}}.",
+    "write_support": "Написать в поддержку",
+    "support_subject": "Тариф Pro",
+    "history_label": "Оплаты",
+    "gift": "от поддержки",
+    "payment_failed": "Не прошла"
   }
 }

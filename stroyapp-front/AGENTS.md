@@ -210,6 +210,7 @@ router.setParams({ providerGuid }); // форма «создать» стала 
 | Входящие заявки | `/incoming-bookings` | — |
 | Заявка (владельцу) | `/booking` | `bookingGuid` |
 | Форма объявления (с прайсом) | `/provider-form` | `providerGuid?`, `categoryId?` |
+| Тариф и оплата продавца | `/subscription` | — |
 
 Перейти на вкладку с экрана над вкладками — `router.dismissTo('/messages')`,
 а не `push` / `navigate`: те положат поверх вторую копию вкладок.

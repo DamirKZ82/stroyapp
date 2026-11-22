@@ -16,12 +16,17 @@ provider_items: позиции с единицей измерения (libs/unit
     PATCH  /providers/{guid}/photos/order — переупорядочить фото
 
     PUT    /providers/{guid}/items        — заменить прайс целиком
+    POST   /providers/{guid}/verification — прислать БИН/ИИН на проверку («Проверенный»)
+
+Прайс хранится до pro_items позиций при любом тарифе; сколько из них видно
+клиентам, решает тариф владельца (libs/plans.py).
 """
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, field_validator
 
+from config import config
 from connections.connect_postgres import query_db, transaction
 from handlers.h01_errors import WarnException
 from handlers.h03_auth import auth_user
@@ -29,6 +34,7 @@ from libs.common import fit_to_sql, new_guid
 from libs.date import get_timestamp_now
 from libs.ownership import require_provider_owner
 from libs.photos import save_provider_photo, delete_photo_files
+from libs.plans import start_trial
 from libs.text_filter import Clean
 from libs.units import UNIT_CODES
 from services.moderation import publish_sql, refuse_publish_if_hidden
@@ -39,8 +45,9 @@ router = APIRouter(prefix='/providers')
 
 PRICE_UNITS = UNIT_CODES
 
-# Позиций в прайсе одного объявления не больше.
-ITEMS_LIMIT = 500
+# Позиций в прайсе одного объявления не больше — при любом тарифе. Сколько
+# из них видно клиентам, решает тариф (libs/plans.py).
+ITEMS_LIMIT = config['plans']['pro_items']
 
 
 # -------------------------------------------------------------------------
@@ -278,6 +285,18 @@ class PriceItemsBody(BaseModel):
         return val
 
 
+class VerificationBody(BaseModel):
+    bin: str
+
+    @field_validator('bin')
+    @classmethod
+    def bin_ok(cls, val):
+        val = ''.join((val or '').split())
+        if len(val) != 12 or not val.isdigit():
+            raise ValueError('БИН или ИИН — 12 цифр')
+        return val
+
+
 class PhotoOrderBody(BaseModel):
     photo_ids: List[int]
 
@@ -356,6 +375,19 @@ async def _provider_items(provider_id: int) -> List[dict]:
     """)
 
 
+async def _verification(provider_id: int) -> dict:
+    rows = await query_db(f"""
+        SELECT bin, verify_requested_at, verified_at FROM providers
+        WHERE id = {fit_to_sql(provider_id)}
+    """)
+    r = rows[0] if rows else {}
+    return {
+        'bin': r.get('bin'),
+        'requested_at': r.get('verify_requested_at'),
+        'verified_at': r.get('verified_at'),
+    }
+
+
 def _provider_public(row: dict) -> dict:
     return {
         'id': row['id'],
@@ -386,6 +418,7 @@ async def my_providers(user=Depends(auth_user)):
         SELECT p.id, p.guid, p.category_id, p.city_id, p.name, p.description,
                p.phone, p.address, p.latitude, p.longitude, p.price_from, p.price_unit,
                p.is_active, p.created_at, p.updated_at,
+               p.verified_at,
                cat.code AS category_code, cat.kind AS category_kind,
                cat.name_ru AS category_name_ru,
                cat.name_kz AS category_name_kz
@@ -426,6 +459,7 @@ async def my_providers(user=Depends(auth_user)):
         }
         item['main_thumb'] = thumb_by_provider.get(p['id'])
         item['items_count'] = count_by_provider.get(p['id'], 0)
+        item['verified'] = p['verified_at'] is not None
         items.append(item)
     return {'items': items}
 
@@ -469,11 +503,14 @@ async def create_provider(body: ProviderCreateBody, user=Depends(auth_user)):
     """)
     provider = rows[0]
     await _replace_attrs(provider['id'], body.attr_ids)
+    # Первое объявление продавца запускает пробный период.
+    await start_trial(user['id'])
 
     result = _provider_public(provider)
     result['attrs'] = await _provider_attrs(provider['id'])
     result['photos'] = []
     result['items'] = []
+    result['verification'] = {'bin': None, 'requested_at': None, 'verified_at': None}
     return {'provider': result}
 
 
@@ -484,6 +521,7 @@ async def get_provider(guid: str, user=Depends(auth_user)):
     result['photos'] = await _provider_photos(provider['id'])
     result['attrs'] = await _provider_attrs(provider['id'])
     result['items'] = await _provider_items(provider['id'])
+    result['verification'] = await _verification(provider['id'])
     return {'provider': result}
 
 
@@ -549,6 +587,7 @@ async def patch_provider(guid: str, body: ProviderPatchBody, user=Depends(auth_u
     result['photos'] = await _provider_photos(provider['id'])
     result['attrs'] = await _provider_attrs(provider['id'])
     result['items'] = await _provider_items(provider['id'])
+    result['verification'] = await _verification(provider['id'])
     return {'provider': result}
 
 
@@ -699,3 +738,24 @@ async def replace_items(guid: str, body: PriceItemsBody, user=Depends(auth_user)
             WHERE id = {fit_to_sql(provider['id'])}
         """)
     return {'items': await _provider_items(provider['id'])}
+
+
+@router.post('/{guid}/verification')
+async def request_verification(guid: str, body: VerificationBody, user=Depends(auth_user)):
+    """
+    Продавец присылает БИН (компания) или ИИН (ИП, самозанятый) на проверку.
+    Админ сверяет его с реестром и ставит «Проверенный». Новый номер снимает
+    прежнюю проверку: сверяли другой.
+    """
+    provider = await require_provider_owner(guid, user)
+    now = get_timestamp_now()
+    await query_db(f"""
+        UPDATE providers
+           SET verified_at = CASE WHEN bin IS NOT DISTINCT FROM {fit_to_sql(body.bin)}
+                                  THEN verified_at ELSE null END,
+               bin = {fit_to_sql(body.bin)},
+               verify_requested_at = {fit_to_sql(now)},
+               updated_at = {fit_to_sql(now)}
+         WHERE id = {fit_to_sql(provider['id'])}
+    """)
+    return {'verification': await _verification(provider['id'])}

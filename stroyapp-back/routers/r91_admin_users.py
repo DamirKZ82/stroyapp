@@ -7,6 +7,7 @@
     POST   /admin/api/users/{id}/block       заблокировать (причина обязательна)
     POST   /admin/api/users/{id}/unblock     разблокировать
     DELETE /admin/api/users/{id}             удалить насовсем со всеми данными
+    POST   /admin/api/users/{id}/grant-pro   подарить Pro на N месяцев (причина обязательна)
     GET    /admin/api/actions                кто из админов что делал
     GET    /admin/api/logs                   ошибки сервера, приложения и отказы
 
@@ -22,11 +23,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, field_validator
 
-from connections.connect_postgres import query_db
+from connections.connect_postgres import query_db, transaction
 from handlers.h01_errors import WarnException
 from handlers.h03_auth import auth_admin
 from libs.admin_query import MAX_PAGE, like, limit_offset, paged, phone_match, where_sql
-from libs.common import fit_to_sql
+from libs.common import fit_to_sql, new_guid
+from libs.plans import extend_pro, get_plan
 from libs.date import KZ_TZ, add_minutes, get_timestamp_now
 from services.account import purge_users
 from services.admin_listings import fetch_providers
@@ -75,6 +77,17 @@ class ReasonBody(BaseModel):
         return val
 
 
+class GrantProBody(ReasonBody):
+    months: int
+
+    @field_validator('months')
+    @classmethod
+    def months_ok(cls, val):
+        if val < 1 or val > 12:
+            raise ValueError('От 1 до 12 месяцев')
+        return val
+
+
 # -------------------------------------------------------------------------
 # Обзор
 # -------------------------------------------------------------------------
@@ -112,7 +125,14 @@ async def stats(admin=Depends(auth_admin)):
             (SELECT COUNT(*) FROM errors_front WHERE created_at >= {day})::int AS errors_front_day,
             (SELECT COUNT(*) FROM warns WHERE created_at >= {day})::int AS warns_day,
             (SELECT COUNT(*) FROM complaints WHERE status = 'new')::int AS complaints_new,
-            (SELECT COUNT(*) FROM complaints)::int AS complaints_total
+            (SELECT COUNT(*) FROM complaints)::int AS complaints_total,
+            (SELECT COUNT(*) FROM seller_plans WHERE paid_until > {fit_to_sql(now)})::int AS sellers_pro,
+            (SELECT COUNT(*) FROM seller_plans WHERE trial_ends_at > {fit_to_sql(now)}
+               AND (paid_until IS NULL OR paid_until <= {fit_to_sql(now)}))::int AS sellers_trial,
+            (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'paid' AND gateway <> 'admin'
+               AND paid_at >= {fit_to_sql(add_minutes(now, -30 * 24 * 60))})::int AS revenue_30d,
+            (SELECT COUNT(*) FROM providers WHERE verify_requested_at IS NOT NULL
+               AND verified_at IS NULL)::int AS verify_wait
     """)
     totals = rows[0]
     totals['reviews_avg'] = round(totals['reviews_avg'], 2)
@@ -246,8 +266,16 @@ async def get_user(user_id: int, admin=Depends(auth_admin)):
         ORDER BY accepted_at DESC, version DESC
         LIMIT 1
     """)
+    payments = await query_db(f"""
+        SELECT id, months, amount, status, gateway, note, created_at, paid_at
+        FROM payments WHERE user_id = {uid}
+        ORDER BY id DESC
+        LIMIT 20
+    """)
     return {
         'user': user,
+        'plan': await get_plan(user_id),
+        'payments': payments,
         'terms': {'current': TERMS_VERSION, 'accepted': terms[0] if terms else None},
         'admin_access': access[0] if access else None,
         'providers': await fetch_providers([f'p.owner_id = {uid}']),
@@ -282,6 +310,28 @@ async def unblock(user_id: int, admin=Depends(auth_admin)):
     await unblock_user(user_id)
     await log_action(admin, 'user_unblock', 'user', user_id, _user_label(target), subjects=[user_id])
     return {'user': await _user_or_404(user_id)}
+
+
+@router.post('/users/{user_id}/grant-pro')
+async def grant_pro(user_id: int, body: GrantProBody, admin=Depends(auth_admin)):
+    """
+    Подарить Pro: компенсация, акция, оплата по счёту. В оплатах — строка
+    с gateway 'admin' и суммой 0, в журнале — кто и почему.
+    """
+    target = await _user_or_404(user_id)
+    now = get_timestamp_now()
+    async with transaction() as tx:
+        await tx.query(f"""
+            INSERT INTO payments (guid, user_id, months, amount, status, gateway,
+                                  granted_by, note, created_at, paid_at)
+            VALUES ({fit_to_sql(new_guid())}, {fit_to_sql(user_id)}, {fit_to_sql(body.months)}, 0,
+                    'paid', 'admin', {fit_to_sql(admin['id'])}, {fit_to_sql(body.reason)},
+                    {fit_to_sql(now)}, {fit_to_sql(now)})
+        """)
+        until = await extend_pro(tx, user_id, body.months)
+    await log_action(admin, 'pro_grant', 'user', user_id, _user_label(target),
+                     f'{body.months} мес. до {until[:10]}: {body.reason}', subjects=[user_id])
+    return {'plan': await get_plan(user_id)}
 
 
 @router.delete('/users/{user_id}')

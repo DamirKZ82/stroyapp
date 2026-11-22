@@ -77,6 +77,11 @@ services:
       MOBIZON_API_KEY: ${MOBIZON_API_KEY:-}
       MOBIZON_SENDER: ${MOBIZON_SENDER:-}
       TWOGIS_API_KEY: ${TWOGIS_API_KEY:-}
+      # Оплата тарифа Pro картой (пусто = «оплата пока недоступна»)
+      FREEDOMPAY_MERCHANT_ID: ${FREEDOMPAY_MERCHANT_ID:-}
+      FREEDOMPAY_SECRET: ${FREEDOMPAY_SECRET:-}
+      FREEDOMPAY_TESTING: ${FREEDOMPAY_TESTING:-0}
+      PRO_MONTH_PRICE: ${PRO_MONTH_PRICE:-9900}
       # Демо-вход для ревью сторов (пусто = выключено)
       REVIEW_PHONE: ${REVIEW_PHONE:-}
       REVIEW_CODE: ${REVIEW_CODE:-}

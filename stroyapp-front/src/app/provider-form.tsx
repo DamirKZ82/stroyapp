@@ -1,30 +1,39 @@
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, StyleSheet, Text, View, type TextInput } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError, dictsApi, providersApi } from '@/api';
+import { ApiError, dictsApi, providersApi, subscriptionApi } from '@/api';
 import type { OwnerProviderFull, ProviderBody } from '@/api';
-import type { Category, City, ListingKind, PriceItem, PriceUnit, ProviderAttrType } from '@/api/types';
+import type {
+  Category,
+  City,
+  ListingKind,
+  PriceItem,
+  PriceUnit,
+  ProviderAttrType,
+  ProviderVerification,
+  SellerPlan,
+} from '@/api/types';
 import { Button } from '@/components/Button';
 import { Card, RowGroup, SectionLabel, SwitchRow } from '@/components/Card';
 import { Chip, ChipWrap } from '@/components/Chip';
 import { CityPicker } from '@/components/CityPicker';
-import { ErrorBanner, Loader, useAnnounce } from '@/components/Feedback';
+import { Badge, ErrorBanner, Loader, useAnnounce } from '@/components/Feedback';
 import { Field, Input, SelectField } from '@/components/Field';
 import { PhotoStrip } from '@/components/PhotoStrip';
 import { PhotoViewer } from '@/components/PhotoViewer';
 import { Screen } from '@/components/Screen';
 import { Segment } from '@/components/Segment';
 import { Sheet } from '@/components/Sheet';
-import { space, type ThemeColors } from '@/theme';
+import { space, text, type ThemeColors } from '@/theme';
 import { useThemedStyles } from '@/theme/scheme';
 import { confirmDestructive, showThen } from '@/utils/alert';
 import { KIND_KEY, KINDS } from '@/utils/category';
 import { parseCoord, splitCoordPaste } from '@/utils/coords';
 import { dictName } from '@/utils/i18nDict';
 import { useLang } from '@/utils/lang';
-import { useOnTop } from '@/utils/nav';
+import { pushOnce, useOnTop } from '@/utils/nav';
 import { intOrNull, onlyDigits } from '@/utils/number';
 import { photoUrl } from '@/utils/photo';
 import { pickPhotos, type PickedPhoto } from '@/utils/pickPhotos';
@@ -43,8 +52,10 @@ const DESCRIPTION_MAX = 5000;
 const PHONE_MAX = 20;
 const ADDRESS_MAX = 500;
 const ITEM_NAME_MAX = 300;
-/** Столько позиций в прайсе принимает сервер (ITEMS_LIMIT). */
+/** Столько позиций в прайсе принимает сервер при любом тарифе (ITEMS_LIMIT). */
 const ITEMS_LIMIT = 500;
+/** БИН компании или ИИН предпринимателя — 12 цифр. */
+const BIN_DIGITS = 12;
 /** Девять цифр — это до 999 999 999 ₸; сервер принимает цену до миллиарда. */
 const PRICE_DIGITS = 9;
 
@@ -97,6 +108,8 @@ export default function ProviderFormScreen() {
   const [attrTypes, setAttrTypes] = useState<ProviderAttrType[]>([]);
   /** Карточка, как она лежит на сервере; null — ещё не создана. */
   const [provider, setProvider] = useState<OwnerProviderFull | null>(null);
+  /** Тариф владельца: сколько позиций прайса видно клиентам. null — не узнали. */
+  const [plan, setPlan] = useState<SellerPlan | null>(null);
 
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [city, setCity] = useState<City | null>(null);
@@ -164,12 +177,15 @@ export default function ProviderFormScreen() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [cats, cityList, found] = await Promise.all([
+      const [cats, cityList, found, sub] = await Promise.all([
         dictsApi.categories(),
         dictsApi.cities(),
         editingGuid ? providersApi.get(editingGuid) : Promise.resolve(null),
+        // Тариф — только подсказка у прайса: без него форма работает.
+        subscriptionApi.get().catch(() => null),
       ]);
       if (request !== loadRequest.current) return;
+      setPlan(sub?.plan ?? null);
 
       const selectable = cats.items;
       setCategories(selectable);
@@ -827,6 +843,21 @@ export default function ProviderFormScreen() {
           />
         </Card>
       ))}
+      {/* Сверх лимита тарифа позиции хранятся, но клиенты их не видят:
+          продавец должен узнать об этом здесь, а не от покупателей. */}
+      {plan && items.length > plan.items_limit ? (
+        <Card style={styles.planHint}>
+          <Text style={styles.planHintText}>
+            {t('owner.items_hidden_by_plan', { count: plan.items_limit })}
+          </Text>
+          <Button
+            label={t('subscription.open')}
+            variant="outline"
+            small
+            onPress={() => pushOnce('/subscription')}
+          />
+        </Card>
+      ) : null}
       {errors.items ? <FieldErrorText message={errors.items} /> : null}
       <Button
         label={t('owner.item_add')}
@@ -906,7 +937,10 @@ export default function ProviderFormScreen() {
         </RowGroup>
       ) : null}
 
-      <SectionLabel>{t('owner.provider_photos_label')}</SectionLabel>
+      {/* У бригады фото — это её работы: так их и просим. */}
+      <SectionLabel>
+        {kind === 'service' ? t('owner.photos_works_label') : t('owner.provider_photos_label')}
+      </SectionLabel>
       <Card>
         <PhotoStrip
           photos={photos}
@@ -925,6 +959,14 @@ export default function ProviderFormScreen() {
           }
         />
       </Card>
+
+      {provider ? (
+        <VerificationCard
+          providerGuid={provider.guid}
+          initial={provider.verification}
+          disabled={busy}
+        />
+      ) : null}
 
       {provider ? (
         <Button
@@ -981,6 +1023,85 @@ export default function ProviderFormScreen() {
   );
 }
 
+/**
+ * «Проверенный продавец»: продавец присылает БИН или ИИН, админ сверяет его
+ * с реестром. Отдельно от «Сохранить»: это заявка на проверку, а не поле
+ * карточки, и уходит она своим запросом.
+ */
+function VerificationCard({
+  providerGuid,
+  initial,
+  disabled,
+}: {
+  providerGuid: string;
+  initial: ProviderVerification | undefined;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const styles = useThemedStyles(makeStyles);
+  const onTop = useOnTop();
+  const [state, setState] = useState<ProviderVerification | undefined>(initial);
+  const [bin, setBin] = useState(initial?.bin ?? '');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    if (bin.length !== BIN_DIGITS) {
+      setError(t('owner.bin_invalid'));
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      const res = await subscriptionApi.requestVerification(providerGuid, bin);
+      if (onTop.current) setState(res.verification);
+    } catch (e) {
+      if (onTop.current) setError(e instanceof ApiError ? e.message : t('common.error_generic'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const sameBin = !!state?.bin && state.bin === bin;
+  let badge: ReactNode = null;
+  if (state?.verified_at && sameBin) {
+    badge = <Badge label={t('owner.verify_done')} tone="success" />;
+  } else if (state?.requested_at && sameBin) {
+    badge = <Badge label={t('owner.verify_waiting')} tone="warning" />;
+  }
+
+  return (
+    // Статус — строкой под заголовком, а не справа от него: рядом с ним
+    // длинный заголовок обрезался бы.
+    <Card title={t('owner.verify_title')} hint={t('owner.verify_hint')}>
+      {badge ? <View style={styles.verifyBadge}>{badge}</View> : null}
+      <Field label={t('owner.bin_label')} error={error ?? undefined}>
+        <Input
+          value={bin}
+          onChangeText={(value) => {
+            setBin(onlyDigits(value, BIN_DIGITS));
+            setError(null);
+          }}
+          placeholder={t('owner.bin_placeholder')}
+          accessibilityLabel={t('owner.bin_label')}
+          keyboardType="number-pad"
+          invalid={!!error}
+        />
+      </Field>
+      {sameBin && (state?.verified_at || state?.requested_at) ? null : (
+        <Button
+          label={t('owner.verify_send')}
+          variant="outline"
+          onPress={() => void send()}
+          busy={sending}
+          disabled={disabled}
+        />
+      )}
+      <Text style={styles.sectionHint}>{t('owner.verify_pro_note')}</Text>
+    </Card>
+  );
+}
+
 function toDraft(item: PriceItem, index: number): ItemDraft {
   return {
     key: item.guid ?? `s-${index}`,
@@ -1018,6 +1139,9 @@ const makeStyles = (colors: ThemeColors) =>
     fieldError: { fontSize: 13, color: colors.danger, paddingHorizontal: 4 },
     sectionHint: { fontSize: 13, color: colors.muted, paddingHorizontal: 4 },
     pair: { flexDirection: 'row', gap: space.gap },
+    verifyBadge: { flexDirection: 'row' },
+    planHint: { gap: 8, backgroundColor: `${colors.warning}1F` },
+    planHintText: { fontSize: text.caption, lineHeight: 20, color: colors.text },
     half: { flex: 1, minWidth: 0 },
     // Удаление — в самом низу и с отступом от остального: мимо него не
     // промахиваются, целясь в фото.

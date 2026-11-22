@@ -5,6 +5,8 @@
     GET    /admin/api/providers/{id}            объявление целиком: фото, признаки, прайс
     POST   /admin/api/providers/{id}/hide       скрыть из поиска (причина обязательна)
     POST   /admin/api/providers/{id}/unhide     вернуть
+    POST   /admin/api/providers/{id}/verify     «Проверенный»: БИН/ИИН сверен с реестром
+    POST   /admin/api/providers/{id}/unverify   снять отметку (причина обязательна)
     DELETE /admin/api/provider-photos/{id}      удалить одно фото
     GET    /admin/api/reviews                   отзывы: поиск, оценка
     DELETE /admin/api/reviews/{id}
@@ -144,6 +146,47 @@ async def hide_provider(provider_id: int, body: ReasonBody, admin=Depends(auth_a
 @router.post('/providers/{provider_id}/unhide')
 async def unhide_provider(provider_id: int, admin=Depends(auth_admin)):
     return await _unhide('provider', provider_id, admin)
+
+
+async def _provider_for_verify(provider_id: int) -> dict:
+    rows = await query_db(f"""
+        SELECT id, name, owner_id, bin, verified_at FROM providers
+        WHERE id = {fit_to_sql(provider_id)}
+    """)
+    if not rows:
+        raise WarnException(404, 'Объявление не найдено')
+    return rows[0]
+
+
+@router.post('/providers/{provider_id}/verify')
+async def verify_provider(provider_id: int, admin=Depends(auth_admin)):
+    """
+    Админ сверил БИН/ИИН объявления с реестром (stat.gov.kz, kgd.gov.kz).
+    Значок «Проверенный» клиенты увидят, пока у владельца оплачен Pro.
+    """
+    p = await _provider_for_verify(provider_id)
+    if not p['bin']:
+        raise WarnException(400, 'Продавец ещё не прислал БИН или ИИН')
+    now = get_timestamp_now()
+    await query_db(f"""
+        UPDATE providers SET verified_at = {fit_to_sql(now)}
+        WHERE id = {fit_to_sql(provider_id)}
+    """)
+    await log_action(admin, 'provider_verify', 'provider', provider_id, p['name'], f"БИН/ИИН {p['bin']}",
+                     subjects=[p['owner_id']])
+    return {'ok': True}
+
+
+@router.post('/providers/{provider_id}/unverify')
+async def unverify_provider(provider_id: int, body: ReasonBody, admin=Depends(auth_admin)):
+    p = await _provider_for_verify(provider_id)
+    await query_db(f"""
+        UPDATE providers SET verified_at = null
+        WHERE id = {fit_to_sql(provider_id)}
+    """)
+    await log_action(admin, 'provider_unverify', 'provider', provider_id, p['name'], body.reason,
+                     subjects=[p['owner_id']])
+    return {'ok': True}
 
 
 @router.delete('/provider-photos/{photo_id}')

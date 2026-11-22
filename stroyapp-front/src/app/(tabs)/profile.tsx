@@ -212,6 +212,11 @@ export default function ProfileScreen() {
             onPress={() => pushOnce('/my-listings')}
           />
           <Row
+            title={t('subscription.title')}
+            icon="star-circle-outline"
+            onPress={() => pushOnce('/subscription')}
+          />
+          <Row
             title={t('profile.incoming_bookings')}
             icon="inbox-arrow-down-outline"
             onPress={() => pushOnce('/incoming-bookings')}

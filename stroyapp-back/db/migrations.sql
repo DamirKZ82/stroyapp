@@ -114,6 +114,12 @@ CREATE TABLE IF NOT EXISTS providers (
     hidden_reason   TEXT,
     was_active      BOOLEAN,
     hidden_by_block BOOLEAN DEFAULT FALSE,
+    -- «Проверенный»: продавец прислал БИН/ИИН (bin), админ сверил его с
+    -- реестром и поставил verified_at. Значок виден, пока у владельца
+    -- оплачен тариф Pro (libs/plans.py).
+    bin                 VARCHAR(12),
+    verify_requested_at CHAR(19),
+    verified_at         CHAR(19),
     created_at      CHAR(19) NOT NULL,
     updated_at      CHAR(19) NOT NULL
 );
@@ -508,3 +514,69 @@ CREATE TABLE IF NOT EXISTS terms_acceptances (
     accepted_at  CHAR(19) NOT NULL,
     PRIMARY KEY (user_id, version)
 );
+
+
+-- =========================================================================
+-- Тариф продавца (libs/plans.py)
+--
+-- Строка появляется с первым объявлением: с этого дня идёт пробный период.
+--     trial_ends_at — конец пробного периода (все возможности Pro, кроме
+--                     продвижения и значка «Проверенный»);
+--     paid_until    — до какого момента оплачен Pro.
+-- Клиентам строка не нужна: они пользуются бесплатно.
+-- Отдельная таблица, а не колонки в users — по той же причине, что и
+--     terms_acceptances. Без внешнего ключа: строку удаляет services/account.py.
+-- =========================================================================
+-- Базы, созданные до появления тарифов: колонки «Проверенного».
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS bin                 VARCHAR(12);
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS verify_requested_at CHAR(19);
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS verified_at         CHAR(19);
+
+CREATE TABLE IF NOT EXISTS seller_plans (
+    user_id        INT PRIMARY KEY,
+    trial_ends_at  CHAR(19) NOT NULL,
+    paid_until     CHAR(19),
+    created_at     CHAR(19) NOT NULL,
+    updated_at     CHAR(19) NOT NULL
+);
+
+-- Продавцы, у которых объявления были до появления тарифов: пробный период
+-- для них начинается с обновления, как если бы объявление было первым.
+-- Новым продавцам строку ставит start_trial, так что при следующих запусках
+-- вставлять нечего. 30 дней — config['plans']['trial_days'], время — UTC+5.
+INSERT INTO seller_plans (user_id, trial_ends_at, paid_until, created_at, updated_at)
+SELECT DISTINCT p.owner_id,
+       to_char(now() AT TIME ZONE 'UTC' + interval '5 hours' + interval '30 days', 'YYYY-MM-DD"T"HH24:MI:SS'),
+       null,
+       to_char(now() AT TIME ZONE 'UTC' + interval '5 hours', 'YYYY-MM-DD"T"HH24:MI:SS'),
+       to_char(now() AT TIME ZONE 'UTC' + interval '5 hours', 'YYYY-MM-DD"T"HH24:MI:SS')
+FROM providers p
+WHERE p.owner_id IS NOT NULL
+ON CONFLICT (user_id) DO NOTHING;
+
+-- =========================================================================
+-- Оплаты тарифа (libs/payments.py)
+--
+-- Деньги по сделкам между клиентом и продавцом через платформу не идут —
+--     здесь только подписка продавца.
+-- gateway — 'freedompay' (карта через эквайринг), 'test' (только в разработке),
+--     'admin' (подарено админом: granted_by — кто).
+-- user_id без внешнего ключа: при удалении аккаунта оплаты остаются для
+--     бухгалтерии, а user_id обнуляется (services/account.py).
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS payments (
+    id           SERIAL PRIMARY KEY,
+    guid         CHAR(36) UNIQUE NOT NULL,
+    user_id      INT,
+    months       INT NOT NULL,
+    amount       INT NOT NULL,
+    status       VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'paid', 'failed')),
+    gateway      VARCHAR(30) NOT NULL,
+    external_id  VARCHAR(100),
+    granted_by   INT,
+    note         TEXT,
+    created_at   CHAR(19) NOT NULL,
+    paid_at      CHAR(19)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);

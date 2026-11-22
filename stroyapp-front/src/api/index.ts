@@ -10,6 +10,7 @@ export { providersApi } from './providers';
 export { chatsApi } from './chats';
 export { complaintsApi } from './complaints';
 export { peerBlocksApi } from './peerBlocks';
+export { subscriptionApi } from './subscription';
 export * from './types';
 export type { ProviderSearchParams, ItemSearchParams } from './search';
 export type { BookingCreateBody } from './bookings';

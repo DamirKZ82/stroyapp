@@ -33,6 +33,9 @@ PROVIDER_STATUS_FILTER = {
     'public': 'p.is_active IS TRUE',
     'unpublished': 'p.is_active IS NOT TRUE AND p.hidden_at IS NULL',
     'hidden': 'p.hidden_at IS NOT NULL',
+    # Продавец прислал БИН/ИИН, админ ещё не сверил.
+    'verify_wait': 'p.verify_requested_at IS NOT NULL AND p.verified_at IS NULL',
+    'verified': 'p.verified_at IS NOT NULL',
 }
 
 _PROVIDER_FROM = """
@@ -47,6 +50,7 @@ async def fetch_providers(conditions: list, page: int = 1, page_size: int = 100)
     return await query_db(f"""
         SELECT p.id, p.guid, p.name, p.price_from, p.price_unit,
                p.is_active, p.hidden_at, p.hidden_reason, p.created_at,
+               p.bin, p.verify_requested_at, p.verified_at,
                cat.name_ru AS category, cat.kind AS kind, c.name_ru AS city,
                (SELECT COUNT(*) FROM provider_items x WHERE x.provider_id = p.id)::int AS items,
                u.id AS owner_id, u.phone AS owner_phone, u.full_name AS owner_name,

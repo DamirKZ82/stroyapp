@@ -208,6 +208,7 @@ export default function RootLayout() {
           <Stack.Screen name="incoming-bookings" />
           <Stack.Screen name="booking" />
           <Stack.Screen name="provider-form" />
+          <Stack.Screen name="subscription" />
         </Stack.Protected>
         {/* Витрина компонентов — только в разработке. */}
         <Stack.Protected guard={__DEV__}>

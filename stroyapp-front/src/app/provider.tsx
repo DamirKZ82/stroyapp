@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -260,6 +261,19 @@ export default function ProviderScreen() {
 
           <View style={styles.head}>
             <Text style={styles.name}>{provider.name}</Text>
+            {provider.verified ? (
+              // Значок скрыт от диктора: подпись рядом говорит то же словами.
+              <View style={styles.verified}>
+                <Icon
+                  name="check-decagram"
+                  size={18}
+                  color={colors.success}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                />
+                <Text style={styles.verifiedText}>{t('provider.verified_long')}</Text>
+              </View>
+            ) : null}
             <Text style={styles.sub}>
               {`${dictName(provider.category, lang)} · ${dictName(provider.city, lang)}`}
             </Text>
@@ -408,6 +422,8 @@ const makeStyles = (colors: ThemeColors) =>
     head: { gap: 4 },
     name:{ fontSize: text.title, fontWeight: '700', color: colors.text },
     sub: { fontSize: text.caption, color: colors.muted },
+    verified: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    verifiedText: { flexShrink: 1, fontSize: text.caption, fontWeight: '600', color: colors.success },
     rating: { alignSelf: 'flex-start' },
     priceCard: { gap: 2 },
     price: { fontSize: text.metric, fontWeight: '700', color: colors.primary },

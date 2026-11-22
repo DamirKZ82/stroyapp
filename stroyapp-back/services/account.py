@@ -96,6 +96,10 @@ async def purge_users(user_ids: list, keep_login: bool = False) -> dict:
         # Согласия с Условиями использования — запись о человеке. У служебного
         # аккаунта тоже: следующий проверяющий должен увидеть шаг согласия.
         stats['terms'] = await delete(tx, 'terms_acceptances', f"user_id = ANY({u})")
+        # Тариф продавца — тоже данные человека. Оплаты остаются для
+        # бухгалтерии, но уже ни с кем не связаны.
+        await delete(tx, 'seller_plans', f"user_id = ANY({u})")
+        await tx.query(f"UPDATE payments SET user_id = null WHERE user_id = ANY({u})")
         if keep_login:
             # Токен пуш-уведомлений — тоже данные человека, а не часть входа.
             await tx.query(f"UPDATE users SET fcm_token = null WHERE id = ANY({u})")

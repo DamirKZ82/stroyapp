@@ -190,7 +190,22 @@
     admin_grant: 'Назначил админом',
     admin_revoke: 'Снял права админа',
     admin_password_set: 'Задал пароль админки',
+    provider_verify: 'Отметил «Проверенный»',
+    provider_unverify: 'Снял «Проверенный»',
+    pro_grant: 'Подарил Pro',
   };
+  const PLAN_TIER = {
+    none: ['Без тарифа', ''],
+    trial: ['Пробный', 'warn'],
+    free: ['Бесплатный', ''],
+    pro: ['Pro', 'ok'],
+  };
+  const PAYMENT_STATUS = {
+    pending: ['Не завершена', ''],
+    paid: ['Оплачено', 'ok'],
+    failed: ['Не прошла', 'bad'],
+  };
+  const GATEWAYS = { freedompay: 'Freedom Pay', test: 'тестовая', admin: 'подарок админа' };
 
   const badge = (pair) => el('span', { class: 'badge ' + (pair ? pair[1] : ''), text: pair ? pair[0] : '?' });
 
@@ -331,13 +346,14 @@
   const REASON_FOR_ADMINS = 'Причину увидят только админы — в журнале действий.';
 
   /** Спросить причину. Вернёт текст или null, если передумали. hint — кто её увидит. */
-  function askReason({ title, text, confirmLabel, hint, placeholder }) {
+  /** extra — поле над причиной (срок Pro); calm — кнопка не красная: действие не карательное. */
+  function askReason({ title, text, confirmLabel, hint, placeholder, extra, calm }) {
     return new Promise((resolve) => {
       let answer = null;
       const input = el('textarea', { maxLength: 500, placeholder: placeholder || 'Например: чужие фотографии, недостоверные цены' });
       const error = el('div', { class: 'error', role: 'alert' });
       const ok = el('button', {
-        class: 'btn danger solid', type: 'button', text: confirmLabel,
+        class: calm ? 'btn' : 'btn danger solid', type: 'button', text: confirmLabel,
         onclick: () => {
           const value = input.value.trim();
           if (value.length < 3) { error.textContent = 'Напишите причину — она останется в журнале'; input.focus(); return; }
@@ -350,6 +366,7 @@
         slim: true,
         body: [
           text ? el('p', { text }) : null,
+          extra || null,
           labeled('Причина', input),
           hint ? el('p', { class: 'muted small', text: hint }) : null,
           error,
@@ -593,6 +610,7 @@
   const cityOptions = () => [['all', 'Все города'], ...dicts.cities.map((c) => [c.id, c.name_ru])];
   const STATUS_OPTIONS = [
     ['all', 'Любой статус'], ['public', 'В поиске'], ['unpublished', 'Сняты владельцем'], ['hidden', 'Скрыты модератором'],
+    ['verify_wait', 'Ждут проверки БИН'], ['verified', 'Проверенные'],
   ];
 
   // ===================================================================
@@ -619,6 +637,11 @@
         card(t.users_total, 'Пользователи', `+${t.users_week} за 7 дней · заблокировано ${t.users_blocked}`, { go: 'users' }),
         card(t.providers_total, 'Объявления', `магазинов ${t.shops_total} · бригад ${t.crews_total} · в поиске ${t.providers_public} · скрыто ${t.providers_hidden} · позиций в прайсах ${fmtNum(t.items_total)}`, { go: 'providers' }),
         card(t.bookings_total, 'Заявки', `+${t.bookings_week} за 7 дней · ждут ответа ${t.bookings_pending} · подтверждено ${t.bookings_confirmed}`, { go: 'bookings' }),
+        // Старый сервер этих полей не пришлёт — тогда карточек нет.
+        t.sellers_pro === undefined ? null
+          : card(t.sellers_pro, 'Продавцы на Pro', `на пробном ${t.sellers_trial} · оплат за 30 дней ${fmtMoney(t.revenue_30d)}`),
+        t.verify_wait === undefined ? null
+          : card(t.verify_wait, 'Ждут проверки БИН', 'продавец прислал БИН/ИИН', { go: 'providers', alert: t.verify_wait > 0 }),
         card(t.reviews_total, 'Отзывы', t.reviews_total ? `средняя оценка ${t.reviews_avg}` : 'пока нет', { go: 'reviews' }),
         card(t.chats_total, 'Переписки', `сообщений ${fmtNum(t.messages_total)}`),
         card(errors, 'Ошибки за сутки', `сервер ${t.errors_back_day} · приложение ${t.errors_front_day} · отказов ${t.warns_day}`, { go: 'logs', alert: errors > 0 }),
@@ -747,6 +770,10 @@
           ['Вход в админку', !u.is_admin ? null : data.admin_access
             ? `пароль задан ${fmtDate(data.admin_access.password_set_at)} · последний вход ${data.admin_access.last_login_at ? fmtDate(data.admin_access.last_login_at) : 'ещё не входил'}`
             : `ещё не активирован: доступ появится, когда он ${ACTIVATION}`],
+          ['Тариф продавца', !data.plan ? null : el('span', {},
+            badge(PLAN_TIER[data.plan.tier]),
+            data.plan.tier === 'pro' ? ` до ${fmtDate(data.plan.paid_until)}`
+              : data.plan.tier === 'trial' ? ` до ${fmtDate(data.plan.trial_ends_at)}` : '')],
           ['Активность', `заявок ${data.counts.bookings} · отзывов ${data.counts.reviews} · переписок ${data.counts.chats} · сообщений ${data.counts.messages}`],
           ['Жалобы', `на него ${data.counts.complaints_on}` + (data.counts.complaints_on_new ? ` (новых ${data.counts.complaints_on_new})` : '') + ` · от него ${data.counts.complaints_by}`],
           // Страница бывает новее сервера: её он читает с диска при каждом
@@ -756,6 +783,11 @@
             : `в чёрном списке у ${data.counts.peer_blocks_on} чел. · сам внёс ${data.counts.peer_blocks_by}`],
         ]),
         section('Объявления', data.providers.map((p) => miniListing(p, () => { load(true); changed(); })), 'Объявлений нет'),
+        data.payments === undefined ? null : section('Оплаты тарифа', data.payments.map((pay) => el('div', { class: 'item' },
+          el('div', { class: 'grow' },
+            el('div', { class: 'title', text: `Pro на ${pay.months} мес. · ${fmtMoney(pay.amount)}` }),
+            el('div', { class: 'meta', text: `${GATEWAYS[pay.gateway] || pay.gateway} · ${fmtDate(pay.paid_at || pay.created_at)}` + (pay.note ? ` · ${pay.note}` : '') })),
+          el('div', { class: 'side' }, badge(PAYMENT_STATUS[pay.status])))), 'Оплат не было'),
         section('Последние заявки', data.bookings.map((b) => el('div', { class: 'item' },
           el('div', { class: 'grow' },
             el('div', { class: 'title', text: b.subject || '—' }),
@@ -816,6 +848,25 @@
               send: (password) => call('POST', '/admin/api/admins', { phone: u.phone, password }),
             });
             if (done) { toast('Назначен. Доступ появится, когда он сам задаст пароль.'); load(true); changed(); }
+          },
+        }));
+      }
+      if (data.plan && !u.is_service) {
+        foot.push(el('button', {
+          class: 'btn ghost', type: 'button', text: 'Подарить Pro',
+          onclick: async () => {
+            const months = plain(el('input', { type: 'number', name: 'pro-months', min: 1, max: 12, value: 1 }));
+            const reason = await askReason({
+              title: 'Подарить Pro?', confirmLabel: 'Подарить',
+              text: 'Pro продлится от конца уже оплаченного срока (или с сегодняшнего дня). В оплатах появится строка с суммой 0.',
+              hint: REASON_FOR_ADMINS,
+              placeholder: 'Например: компенсация за сбой, оплата по счёту',
+              extra: labeled('Месяцев (1–12)', months),
+              calm: true,
+            });
+            const n = Math.trunc(Number(months.value));
+            if (reason && !(n >= 1 && n <= 12)) { toast('Срок — от 1 до 12 месяцев', true); return; }
+            if (reason && await run(() => call('POST', `/admin/api/users/${id}/grant-pro`, { months: n, reason }), 'Pro продлён')) { load(true); changed(); }
           },
         }));
       }
@@ -924,10 +975,38 @@
           ['Описание', p.description],
           ['Заявок и отзывов', `заявок ${p.counts.bookings} · отзывов ${p.counts.reviews}` + (p.counts.reviews ? ` · оценка ${p.counts.rating}` : '')],
           p.counts.complaints ? ['Жалоб', `${p.counts.complaints}` + (p.counts.complaints_new ? ` (новых ${p.counts.complaints_new})` : '')] : ['Жалоб', null],
+          ['БИН/ИИН', !p.bin ? 'не присылал'
+            : el('span', {}, p.bin + ' ', p.verified_at
+              ? badge([`Проверен ${fmtDay(p.verified_at)}`, 'ok'])
+              : badge([`Ждёт проверки с ${fmtDay(p.verify_requested_at)}`, 'warn']))],
           ['Добавлен', fmtDate(p.created_at)],
         ]),
       ];
       const foot = [];
+      if (p.bin && !p.verified_at) {
+        foot.push(el('button', {
+          class: 'btn', type: 'button', text: 'БИН сверен — «Проверенный»',
+          onclick: async () => {
+            const sure = await confirmAction({
+              title: 'Отметить «Проверенный»?', confirmLabel: 'Отметить',
+              text: `Сначала сверьте БИН/ИИН ${p.bin} с реестром (stat.gov.kz или kgd.gov.kz): название и вид деятельности должны совпадать с объявлением. Значок клиенты увидят, пока у владельца оплачен Pro.`,
+            });
+            if (sure && await run(() => call('POST', `/admin/api/providers/${id}/verify`), 'Отмечено «Проверенный»')) { load(true); changed(); }
+          },
+        }));
+      } else if (p.verified_at) {
+        foot.push(el('button', {
+          class: 'btn ghost', type: 'button', text: 'Снять «Проверенный»',
+          onclick: async () => {
+            const reason = await askReason({
+              title: 'Снять отметку «Проверенный»?', confirmLabel: 'Снять',
+              text: 'Значок пропадёт у объявления в поиске и на карточке. Продавец сможет прислать БИН/ИИН снова.',
+              hint: REASON_FOR_ADMINS,
+            });
+            if (reason && await run(() => call('POST', `/admin/api/providers/${id}/unverify`, { reason }), 'Отметка снята')) { load(true); changed(); }
+          },
+        }));
+      }
       if (p.status !== 'owner_blocked') {
         foot.push(p.hidden_at
           ? el('button', {

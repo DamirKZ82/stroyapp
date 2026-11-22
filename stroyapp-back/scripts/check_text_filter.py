@@ -1,5 +1,5 @@
 """
-Проверка фильтра брани (libs/text_filter.py). Запускать из toiapp-back после
+Проверка фильтра брани (libs/text_filter.py). Запускать из stroyapp-back после
 любой правки списка:
 
     python -m scripts.check_text_filter

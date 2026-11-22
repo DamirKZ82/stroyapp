@@ -67,7 +67,7 @@ _COMMON = frozenset((
     'asdfghjk', 'asdfghjkl', 'zxcvbnm1', 'abc12345', 'abcd1234', 'a1234567', 'a12345678',
     'admin123', 'admin1234', 'admin12345', 'administrator', 'iloveyou', 'letmein1', 'welcome1',
     'йцукенгш', 'йцукен123', 'пароль123', 'парольпароль', 'админ123', 'привет123',
-    'toiapp123', 'toiapp2026', 'toiappadmin', 'toyhana123', 'toyhanaadmin',
+    'stroyapp123', 'stroyapp2026', 'stroyappadmin', 'stroyapp123', 'stroyappadmin',
 ))
 
 

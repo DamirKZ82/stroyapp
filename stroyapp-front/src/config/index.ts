@@ -37,9 +37,9 @@ export const API_BASE_URL =
  * API_BASE_URL: в разработке тот смотрит на локальный сервер, а открыть
  * нужно те же страницы, что указаны в магазинах приложений.
  */
-export const PRIVACY_URL = 'https://api.toiapp.kz/privacy';
-export const TERMS_URL = 'https://api.toiapp.kz/terms';
-export const SUPPORT_EMAIL = 'supporttoiapp@gmail.com';
+export const PRIVACY_URL = 'https://api.stroyapp.kz/privacy';
+export const TERMS_URL = 'https://api.stroyapp.kz/terms';
+export const SUPPORT_EMAIL = 'supportstroyapp@gmail.com';
 
 /**
  * EAS project ID.

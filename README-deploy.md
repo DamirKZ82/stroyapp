@@ -1,4 +1,4 @@
-# ToiApp — Production Deployment Guide
+# StroyApp — Production Deployment Guide
 
 Руководство для DevOps. Целевой сервер: Ubuntu 22.04 / 24.04, минимум 2 GB RAM, 20 GB SSD.
 
@@ -26,7 +26,7 @@
 
 Файлы:
 - `docker-compose.yml` — оркестрация
-- `toiapp-back/Dockerfile` — multi-stage образ бэка (Python 3.12-slim)
+- `stroyapp-back/Dockerfile` — multi-stage образ бэка (Python 3.12-slim)
 - `nginx/nginx.conf` — reverse proxy
 - `.env.example` — шаблон env-переменных
 - `.github/workflows/deploy.yml` — CI/CD (build + push в ghcr.io)
@@ -58,9 +58,9 @@ sudo ufw enable
 
 ```bash
 cd /opt
-sudo git clone https://github.com/DamirKZ82/toiapp.git toyhana
-sudo chown -R $USER:$USER toyhana
-cd toyhana
+sudo git clone https://github.com/DamirKZ82/stroyapp.git stroyapp
+sudo chown -R $USER:$USER stroyapp
+cd stroyapp
 ```
 
 ### 3. Конфигурация
@@ -93,7 +93,7 @@ curl http://localhost/dicts/cities | head
 
 ### 5. SSL через Let's Encrypt
 
-**Перед этим шагом:** DNS-запись `api.toiapp.kz` (или ваш домен) должна указывать на IP сервера. Проверить: `dig api.toiapp.kz`.
+**Перед этим шагом:** DNS-запись `api.stroyapp.kz` (или ваш домен) должна указывать на IP сервера. Проверить: `dig api.stroyapp.kz`.
 
 ```bash
 # Открываем веб-рут для ACME-challenge
@@ -104,20 +104,20 @@ docker compose --profile certbot run --rm certbot \
   certonly \
   --webroot \
   --webroot-path=/var/www/certbot \
-  --email admin@toiapp.kz \
+  --email admin@stroyapp.kz \
   --agree-tos \
   --no-eff-email \
-  -d api.toiapp.kz
+  -d api.stroyapp.kz
 ```
 
-После успеха в `./certbot/conf/live/api.toiapp.kz/` появятся `fullchain.pem` и `privkey.pem`.
+После успеха в `./certbot/conf/live/api.stroyapp.kz/` появятся `fullchain.pem` и `privkey.pem`.
 
 ### 6. Включить HTTPS
 
 Открыть `nginx/nginx.conf`:
 
 1. Раскомментировать секцию `server { listen 443 ssl ...}`
-2. Заменить `api.toiapp.kz` на свой домен (две строки)
+2. Заменить `api.stroyapp.kz` на свой домен (две строки)
 3. В блоке `:80` закомментировать `location /` (proxy_pass) и раскомментировать `return 301 https://...`
 
 Применить:
@@ -127,7 +127,7 @@ docker compose restart nginx
 
 Проверка:
 ```bash
-curl https://api.toiapp.kz/dicts/cities | head
+curl https://api.stroyapp.kz/dicts/cities | head
 ```
 
 ### 7. Автоматическое обновление сертификата
@@ -141,19 +141,19 @@ sudo crontab -e
 Добавить:
 ```
 # Обновление SSL раз в день в 03:30. Перезапуск nginx если сертификат обновился.
-30 3 * * * cd /opt/toyhana && docker compose --profile certbot run --rm certbot renew --quiet && docker compose exec nginx nginx -s reload
+30 3 * * * cd /opt/stroyapp && docker compose --profile certbot run --rm certbot renew --quiet && docker compose exec nginx nginx -s reload
 ```
 
 ---
 
 ## 🔄 Обновление приложения
 
-Когда в `main` пуш кода — GitHub Actions собирает свежий образ в `ghcr.io/damirkz82/toyhana-backend:latest`.
+Когда в `main` пуш кода — GitHub Actions собирает свежий образ в `ghcr.io/damirkz82/stroyapp-backend:latest`.
 
 На сервере:
 
 ```bash
-cd /opt/toyhana
+cd /opt/stroyapp
 git pull
 docker compose pull backend
 docker compose up -d backend
@@ -171,29 +171,29 @@ docker image prune -f   # очистка старых слоёв
 
 ### Простой вариант — ежедневный дамп
 
-`/opt/toyhana/scripts/backup.sh`:
+`/opt/stroyapp/scripts/backup.sh`:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DATE=$(date +%Y-%m-%d_%H%M)
 mkdir -p backups
-docker compose exec -T postgres pg_dump -U toyhana_user toyhana | gzip > backups/db-$DATE.sql.gz
+docker compose exec -T postgres pg_dump -U stroyapp_user stroyapp | gzip > backups/db-$DATE.sql.gz
 # Удаляем дампы старше 14 дней
 find backups -name "db-*.sql.gz" -mtime +14 -delete
 ```
 
 ```bash
-chmod +x /opt/toyhana/scripts/backup.sh
+chmod +x /opt/stroyapp/scripts/backup.sh
 sudo crontab -e
 # Каждый день в 02:00
-0 2 * * * /opt/toyhana/scripts/backup.sh
+0 2 * * * /opt/stroyapp/scripts/backup.sh
 ```
 
 ### Восстановление из дампа
 
 ```bash
-gunzip -c backups/db-2026-04-27_0200.sql.gz | docker compose exec -T postgres psql -U toyhana_user -d toyhana
+gunzip -c backups/db-2026-04-27_0200.sql.gz | docker compose exec -T postgres psql -U stroyapp_user -d stroyapp
 ```
 
 ### Облачные бэкапы (рекомендуется)
@@ -215,7 +215,7 @@ docker compose ps   # статус STATUS должен быть healthy
 
 Бесплатно: [UptimeRobot](https://uptimerobot.com).
 - Тип: HTTPS
-- URL: `https://api.toiapp.kz/dicts/cities`
+- URL: `https://api.stroyapp.kz/dicts/cities`
 - Interval: 5 minutes
 
 ### Логи
@@ -237,8 +237,8 @@ docker compose logs postgres
 
 | Переменная | Обязательно | Описание |
 |---|---|---|
-| `DB_NAME` | да | Имя базы (`toyhana`) |
-| `DB_USER` | да | Юзер БД (`toyhana_user`) |
+| `DB_NAME` | да | Имя базы (`stroyapp`) |
+| `DB_USER` | да | Юзер БД (`stroyapp_user`) |
 | `DB_PASSWORD` | да | Пароль БД |
 | `JWT_SECRET` | да | 32+ hex символов для подписи токенов |
 | `TELEGRAM_BOT_TOKEN` | нет | Уведомления админу о новых заявках |
@@ -257,13 +257,13 @@ docker compose logs postgres
 
 ### Frontend → backend URL
 
-В `toiapp-front/app.json` поле `extra.API_BASE_URL` должно указывать на прод-домен:
+В `stroyapp-front/app.json` поле `extra.API_BASE_URL` должно указывать на прод-домен:
 
 ```json
 {
   "expo": {
     "extra": {
-      "API_BASE_URL": "https://api.toiapp.kz"
+      "API_BASE_URL": "https://api.stroyapp.kz"
     }
   }
 }
@@ -271,7 +271,7 @@ docker compose logs postgres
 
 ### CORS
 
-В `toiapp-back/config.py`:
+В `stroyapp-back/config.py`:
 ```python
 'cors': {
     'allow_origins': ['*'] if is_dev else [],
@@ -300,7 +300,7 @@ docker compose logs backend
 
 **Postgres healthcheck failing:**
 ```bash
-docker compose exec postgres pg_isready -U toyhana_user
+docker compose exec postgres pg_isready -U stroyapp_user
 docker compose logs postgres
 ```
 

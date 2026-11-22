@@ -9,7 +9,7 @@
 Конфиг (из .env):
   MOBIZON_API_KEY  — ключ из ЛК Mobizon (~256 hex). Без него отправка отключена.
   MOBIZON_SENDER   — подпись отправителя (опционально). Если зарегистрирована —
-                     SMS придёт от 'TOIAPP'. Если нет — от общего 'MOBINFO'/etc.
+                     SMS придёт от 'STROYAPP'. Если нет — от общего 'MOBINFO'/etc.
 
 Документация Mobizon: https://help.mobizon.com/help/api-docs
 """
@@ -33,7 +33,7 @@ def _build_otp_text(code: str) -> str:
     Текст SMS с OTP-кодом.
     Латиница — 1 SMS на 160 символов = дёшево. Кириллица — 70 символов.
     """
-    return f'ToiApp: vash kod {code}. Nikomu ne soobshchaite.'
+    return f'StroyApp: vash kod {code}. Nikomu ne soobshchaite.'
 
 
 def _build_admin_code_text(code: str) -> str:
@@ -41,7 +41,7 @@ def _build_admin_code_text(code: str) -> str:
     Текст SMS с кодом для пароля админки. Говорит, для чего код: его не
     спутать с кодом входа в приложение и труднее выманить «назовите код из SMS».
     """
-    return f'ToiApp admin: kod {code} dlya parolya adminki. Nikomu ne soobshchaite.'
+    return f'StroyApp admin: kod {code} dlya parolya adminki. Nikomu ne soobshchaite.'
 
 
 async def send_otp(phone: str, code: str) -> None:

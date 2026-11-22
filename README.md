@@ -1,8 +1,8 @@
-# ToiApp 🎉
+# StroyApp 🎉
 
 Мобильное приложение для организации тоя в Казахстане: банкетные залы и рестораны, тамада, артисты, декор, кейтеринг, фото и видео — поиск, заявки и переписка в одном месте.
 
-> **Статус:** бэк в проде (`https://api.toiapp.kz`), приложение 1.0 готовится к публикации: тестовые сборки в Google Play и TestFlight.
+> **Статус:** бэк в проде (`https://api.stroyapp.kz`), приложение 1.0 готовится к публикации: тестовые сборки в Google Play и TestFlight.
 
 ## ✨ Функционал
 
@@ -30,14 +30,14 @@
 
 ## 🛠 Стек
 
-### Бэкенд (`toiapp-back/`)
+### Бэкенд (`stroyapp-back/`)
 - **Python 3.12** + **FastAPI**
 - **PostgreSQL 16** через `asyncpg`
 - JWT аутентификация
 - Inline f-string SQL через `fit_to_sql` (без ORM)
 - Self-applying миграции при старте
 
-### Фронтенд (`toiapp-front/`)
+### Фронтенд (`stroyapp-front/`)
 - **React Native 0.86** + **Expo SDK 57**
 - **TypeScript**
 - **expo-router** — экраны-файлы, системные вкладки и шапки
@@ -49,8 +49,8 @@
 ## 📁 Структура
 
 ```
-toiapp/
-├── toiapp-back/         # Python FastAPI сервер
+stroyapp/
+├── stroyapp-back/         # Python FastAPI сервер
 │   ├── routers/         # Эндпоинты (r01_auth, r20_venues, r30_bookings, ...)
 │   ├── handlers/        # Auth, errors, CORS, route registration
 │   ├── libs/            # Общие утилиты (auth, photos, sms, fcm, pricing)
@@ -59,7 +59,7 @@ toiapp/
 │   ├── db/              # Миграции SQL
 │   └── main.py          # Точка входа
 │
-└── toiapp-front/       # React Native Expo приложение
+└── stroyapp-front/       # React Native Expo приложение
     ├── src/
     │   ├── app/         # Экраны (expo-router): (tabs)/ и экраны над вкладками
     │   ├── components/  # Переиспользуемые компоненты
@@ -85,8 +85,8 @@ toiapp/
 В PostgreSQL создай юзера и базу:
 
 ```sql
-CREATE USER toyhana_user WITH PASSWORD 'твой_пароль';
-CREATE DATABASE toyhana OWNER toyhana_user;
+CREATE USER stroyapp_user WITH PASSWORD 'твой_пароль';
+CREATE DATABASE stroyapp OWNER stroyapp_user;
 ```
 
 Все таблицы создадутся автоматически при первом запуске бэка.
@@ -94,7 +94,7 @@ CREATE DATABASE toyhana OWNER toyhana_user;
 ### Запуск бэка
 
 ```powershell
-cd toiapp-back
+cd stroyapp-back
 
 # Создать виртуальное окружение
 python -m venv .venv
@@ -116,7 +116,7 @@ python main.py
 ### Запуск фронта
 
 ```powershell
-cd toiapp-front
+cd stroyapp-front
 
 npm install
 
@@ -128,7 +128,7 @@ npm start
 npm run web
 ```
 
-Откроется Metro Bundler. В dev-сборке приложения отсканируй QR-код. Смартфон и компьютер должны быть **в одной WiFi сети**. Подробности — в `toiapp-front/README.md`.
+Откроется Metro Bundler. В dev-сборке приложения отсканируй QR-код. Смартфон и компьютер должны быть **в одной WiFi сети**. Подробности — в `stroyapp-front/README.md`.
 
 Узнать IP в PowerShell: `ipconfig` → искать `IPv4 Address` (обычно `192.168.x.x`).
 
@@ -141,7 +141,7 @@ npm run web
 ## 📌 Что в разработке
 
 - [ ] Первая проверка нового интерфейса на iPhone и Android
-- [ ] Переснять скриншоты для магазинов с телефона, когда на проде появятся настоящие объявления (сейчас в `toiapp-front/assets/store/` — собранные из веб-превью)
+- [ ] Переснять скриншоты для магазинов с телефона, когда на проде появятся настоящие объявления (сейчас в `stroyapp-front/assets/store/` — собранные из веб-превью)
 - [ ] Реальные SMS через Mobizon
 - [ ] Push-уведомления (код регистрации есть, в приложении не вызывается)
 - [ ] Тексты ошибок сервера на казахском (сейчас только русский)

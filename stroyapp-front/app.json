@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "ToiApp",
-    "slug": "toiapp",
-    "scheme": "toiapp",
+    "name": "StroyApp",
+    "slug": "stroyapp",
+    "scheme": "stroyapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -10,26 +10,22 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/0ae21cc4-5fc4-4465-adf3-171d9f95268d"
-    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "kz.toiapp.app",
+      "bundleIdentifier": "kz.stroyapp.app",
       "icon": "./assets/icon-ios.png",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Чтобы показать залы и исполнителей в вашем городе",
+        "NSLocationWhenInUseUsageDescription": "Чтобы показать магазины и бригады в вашем городе",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "kz.toiapp.app",
-      "googleServicesFile": "./google-services.json",
+      "package": "kz.stroyapp.app",
       "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1F7A4F"
+        "backgroundColor": "#1E4E79"
       }
     },
     "plugins": [
@@ -37,7 +33,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#1F7A4F",
+          "backgroundColor": "#1E4E79",
           "image": "./assets/splash-icon.png",
           "imageWidth": 120
         }
@@ -62,7 +58,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Чтобы показать залы и исполнителей в вашем городе",
+          "locationWhenInUsePermission": "Чтобы показать магазины и бригады в вашем городе",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
           "motionUsagePermission": "Приложение не использует данные о движении. Доступ к ним может запросить только встроенный модуль геолокации."
@@ -72,7 +68,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#1F7A4F",
+          "color": "#1E4E79",
           "defaultChannel": "default"
         }
       ],
@@ -91,10 +87,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiBaseUrl": "https://api.toiapp.kz",
-      "eas": {
-        "projectId": "0ae21cc4-5fc4-4465-adf3-171d9f95268d"
-      }
+      "apiBaseUrl": "https://api.stroyapp.kz"
     },
     "locales": {
       "ru": "./locales/ru.json",

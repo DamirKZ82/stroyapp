@@ -1,4 +1,4 @@
-/* Админка ToiApp: одна страница, разделы — по #якорю в адресе.
+/* Админка StroyApp: одна страница, разделы — по #якорю в адресе.
    Без сборки и библиотек. Всё, что приходит с сервера, попадает на страницу
    только через textContent / свойства узлов — никакого innerHTML: в именах,
    описаниях и отзывах лежит текст, который писали пользователи. */
@@ -16,7 +16,7 @@
   // скрипт с этого же адреса.
   // Копия в памяти — на случай, когда браузер хранилище не даёт: без неё
   // удачный вход молча возвращал бы на форму входа.
-  const TOKEN_KEY = 'toiapp_admin_token';
+  const TOKEN_KEY = 'stroyapp_admin_token';
   let tokenInMemory = null;
   const store = {
     get() { try { return sessionStorage.getItem(TOKEN_KEY) || tokenInMemory; } catch (e) { return tokenInMemory; } },

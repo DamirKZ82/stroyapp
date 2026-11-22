@@ -3,7 +3,7 @@ import { secureGet, secureSet } from './secureStorage';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 
-const THEME_KEY = 'toyhana.themeMode';
+const THEME_KEY = 'stroyapp.themeMode';
 
 interface ThemeState {
   mode: ThemeMode;

@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: toiapp-front
+        working-directory: stroyapp-front
 
     steps:
       - name: Checkout
@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: toiapp-front/package-lock.json
+          cache-dependency-path: stroyapp-front/package-lock.json
 
       - name: Set up EAS
         uses: expo/expo-github-action@v8

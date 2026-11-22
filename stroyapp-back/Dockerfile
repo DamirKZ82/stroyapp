@@ -1,11 +1,11 @@
 # =============================================================================
-# ToiApp backend — production Docker image
+# StroyApp backend — production Docker image
 #
 # Multi-stage сборка:
 #   - builder: ставит зависимости в /opt/venv, собирает wheels
 #   - runtime: тонкий финальный образ с только runtime-артефактами
 #
-# Запускается uvicorn'ом на порту 1500 (TOYHANA_ENV=prod).
+# Запускается uvicorn'ом на порту 1500 (STROYAPP_ENV=prod).
 # =============================================================================
 
 # ----------------------- Stage 1: builder -----------------------
@@ -41,25 +41,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g \
     curl \
  && rm -rf /var/lib/apt/lists/* \
- && groupadd -r toyhana && useradd -r -g toyhana -m -d /home/toyhana toyhana
+ && groupadd -r stroyapp && useradd -r -g stroyapp -m -d /home/stroyapp stroyapp
 
 # Готовый venv из builder-стадии
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    TOYHANA_ENV=prod
+    STROYAPP_ENV=prod
 
 WORKDIR /app
 
 # Код приложения. Не копируем .env, .venv, __pycache__ — это в .dockerignore
-COPY --chown=toyhana:toyhana . /app
+COPY --chown=stroyapp:stroyapp . /app
 
 # Папка для загруженных фото — будет смонтирована как Docker volume
-RUN mkdir -p /data/uploads && chown -R toyhana:toyhana /data
+RUN mkdir -p /data/uploads && chown -R stroyapp:stroyapp /data
 ENV UPLOADS_ROOT=/data/uploads
 
-USER toyhana
+USER stroyapp
 
 # Healthcheck для docker-compose / k8s / nginx upstream
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

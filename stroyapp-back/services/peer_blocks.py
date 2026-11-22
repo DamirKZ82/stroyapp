@@ -115,7 +115,7 @@ def notice_text(user_id: int, peer_id: int) -> str:
     # Ссылка открывает того, кого заблокировали: модератору смотреть на него.
     where = (f"{config['public_url']}/admin#users/{peer_id}"
              if config['public_url'] else 'админка → Пользователи')
-    return ('ToiApp: блокировка собеседника\n'
+    return ('StroyApp: блокировка собеседника\n'
             f'Пользователь №{user_id} закрыл для себя переписку с пользователем №{peer_id}\n'
             f'Кого заблокировали: {where}')
 

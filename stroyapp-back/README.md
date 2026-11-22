@@ -1,4 +1,4 @@
-# ToiApp — Backend
+# StroyApp — Backend
 
 Этап 1 из 10: скелет бэка.
 
@@ -19,8 +19,8 @@ Telegram-уведомления (опционально), миграции и с
 
 ```bash
 # 1. Создай БД и пользователя (от имени суперюзера postgres)
-psql -U postgres -c "CREATE USER toyhana_user WITH PASSWORD 'change_me';"
-psql -U postgres -c "CREATE DATABASE toyhana OWNER toyhana_user;"
+psql -U postgres -c "CREATE USER stroyapp_user WITH PASSWORD 'change_me';"
+psql -U postgres -c "CREATE DATABASE stroyapp OWNER stroyapp_user;"
 
 # 2. Скопируй .env
 cp .env.example .env
@@ -51,7 +51,7 @@ Swagger UI: http://localhost:4000/docs
 ## Структура
 
 ```
-toiapp-back/
+stroyapp-back/
 ├── main.py                      # точка входа
 ├── config.py                    # несекретные параметры + _require
 ├── temp_settings.py             # временные флаги

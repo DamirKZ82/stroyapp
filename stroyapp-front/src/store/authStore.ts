@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { secureDelete, secureGet, secureSet } from './secureStorage';
 import { setAppLanguage } from '@/i18n';
 
-const TOKEN_KEY = 'toyhana.jwt';
-const USER_KEY = 'toyhana.user';
+const TOKEN_KEY = 'stroyapp.jwt';
+const USER_KEY = 'stroyapp.user';
 
 export interface User {
   id: number;

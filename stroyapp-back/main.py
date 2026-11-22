@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title='ToiApp API',
+    title='StroyApp API',
     version='0.1.0',
     lifespan=lifespan,
 )

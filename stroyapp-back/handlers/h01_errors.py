@@ -116,7 +116,7 @@ async def _save_error(request: Request, message: str, traceback: str, sql: Optio
 
 async def _notify_telegram(error_id: Optional[int], message: str, path: str):
     """Отправить уведомление в Telegram. Если токен не задан — тихо пропускаем."""
-    await send_to_admins(f"🚨 ToiApp error #{error_id}\n{path}\n{message[:500]}")
+    await send_to_admins(f"🚨 StroyApp error #{error_id}\n{path}\n{message[:500]}")
 
 
 # Когда о занятом пуле сообщали в Telegram в последний раз (time.monotonic);

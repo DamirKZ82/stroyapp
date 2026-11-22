@@ -279,7 +279,7 @@ async def request_sms_code(phone: str, address: Optional[str]) -> tuple:
         code = None
         if admins:
             # Постоянный код — только там, где режим разработки задан явно:
-            # сервер, на котором забыли TOYHANA_ENV, тоже считает себя dev.
+            # сервер, на котором забыли STROYAPP_ENV, тоже считает себя dev.
             mock = config['env'] == 'dev' and config['env_explicit']
             code = limits['sms_mock_code'] if mock else f'{secrets.randbelow(10 ** 6):06d}'
 

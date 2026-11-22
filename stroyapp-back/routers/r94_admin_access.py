@@ -206,7 +206,7 @@ async def sms_request(body: SmsRequestBody, request: Request, background: Backgr
         background.add_task(send_admin_code, phone, code)
         background.add_task(
             send_to_admins,
-            f'🔐 ToiApp: {_name(admin)} — запрошен код для пароля админки.\n'
+            f'🔐 StroyApp: {_name(admin)} — запрошен код для пароля админки.\n'
             'Если код запрашивали не вы, никому его не сообщайте.')
     # Ответ один и для админа, и для чужого номера. Талон нужен, чтобы
     # проверить код: его знает только тот, кто код запросил.
@@ -241,7 +241,7 @@ async def choose_password(body: PasswordBody, request: Request, background: Back
     # Чтобы чужая смена пароля не прошла незаметно.
     background.add_task(
         send_to_admins,
-        f"🔐 ToiApp: {_name(admin)} — {'задан' if first_time else 'сменён'} пароль админки.\n"
+        f"🔐 StroyApp: {_name(admin)} — {'задан' if first_time else 'сменён'} пароль админки.\n"
         'Если это не вы и не ваш коллега — подтвердите номер по SMS и задайте пароль заново.')
     return {'token': issue_admin_token(admin['id'], version)}
 
@@ -265,7 +265,7 @@ async def add_admin(body: GrantBody, request: Request, background: BackgroundTas
                      subjects=[target['id']])
     background.add_task(
         send_to_admins,
-        f'🔐 ToiApp: {_name(admin)} назначил админом — {_name(target)}.\n'
+        f'🔐 StroyApp: {_name(admin)} назначил админом — {_name(target)}.\n'
         'Доступ появится, когда тот сам подтвердит номер по SMS и задаст пароль.')
     return {'user': {'id': target['id'], 'phone': target['phone'], 'full_name': target['full_name']},
             'created': created}
@@ -281,5 +281,5 @@ async def remove_admin(user_id: int, body: PasswordBody, request: Request,
     target = await revoke_admin(admin['id'], user_id)
     await log_action(admin, 'admin_revoke', 'user', user_id, _label(target), subjects=[user_id])
     background.add_task(send_to_admins,
-                        f'🔐 ToiApp: {_name(admin)} снял права админа — {_name(target)}.')
+                        f'🔐 StroyApp: {_name(admin)} снял права админа — {_name(target)}.')
     return {'ok': True}

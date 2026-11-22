@@ -1,4 +1,4 @@
-# ToiApp mobile — правила кода
+# StroyApp mobile — правила кода
 
 Expo SDK 57, React Native 0.86, expo-router, TypeScript 6. **Expo сильно
 изменился**: прежде чем писать код с незнакомым API, сверься с версионной
@@ -305,5 +305,5 @@ router.setParams({ hallGuid });     // форма «создать» стала 
 
 ## Проверка
 
-`npx tsc --noEmit` из `toiapp-front`. Ошибки в чужих файлах не чини —
+`npx tsc --noEmit` из `stroyapp-front`. Ошибки в чужих файлах не чини —
 сообщи. `npm install` не запускай.

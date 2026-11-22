@@ -1,5 +1,5 @@
 # =============================================================================
-# ToiApp — production stack
+# StroyApp — production stack
 #
 # Сервисы:
 #   - postgres: PostgreSQL 16 (БД)
@@ -20,7 +20,7 @@ services:
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
-    container_name: toyhana-postgres
+    container_name: stroyapp-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}
@@ -44,27 +44,27 @@ services:
     # ports:
     #   - "127.0.0.1:5432:5432"
     networks:
-      - toyhana-net
+      - stroyapp-net
 
   # ---------------------------------------------------------------------------
   # FastAPI backend
   # ---------------------------------------------------------------------------
   backend:
     build:
-      context: ./toiapp-back
+      context: ./stroyapp-back
       dockerfile: Dockerfile
-    image: toyhana-backend:latest
-    container_name: toyhana-backend
+    image: stroyapp-backend:latest
+    container_name: stroyapp-backend
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      TOYHANA_ENV: prod
+      STROYAPP_ENV: prod
       # По имени контейнера, а не службы: бэкенд стоит и в сети iduken, где
       # «postgres» — база iduken. Имя службы там двусмысленно, и бэкенд
       # стучался в чужую базу с ошибкой пароля.
-      DB_HOST: toyhana-postgres
+      DB_HOST: stroyapp-postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
@@ -84,11 +84,11 @@ services:
       # Загруженные фото сохраняются между перезапусками контейнера
       - uploads:/data/uploads
     networks:
-      - toyhana-net
+      - stroyapp-net
       # На сервере iduken (89.46.33.192) порты 80/443 держит nginx iduken,
-      # он и проксирует api.toiapp.kz сюда по имени toyhana-backend — для
+      # он и проксирует api.stroyapp.kz сюда по имени stroyapp-backend — для
       # этого бэкенд стоит и в его сети. Сеть создаёт выкат iduken, поэтому
-      # ToiApp поднимается после iduken. Сервер без iduken: убрать эту строку
+      # StroyApp поднимается после iduken. Сервер без iduken: убрать эту строку
       # и запускать с --profile standalone (свой nginx ниже).
       - iduken
     # Внутренний порт 1500 — наружу через nginx, не маппим напрямую.
@@ -100,10 +100,10 @@ services:
   # ---------------------------------------------------------------------------
   nginx:
     image: nginx:1.27-alpine
-    container_name: toyhana-nginx
+    container_name: stroyapp-nginx
     restart: unless-stopped
-    # Только для сервера, где ToiApp один: на общем сервере с iduken порты
-    # 80/443 заняты nginx iduken, а api.toiapp.kz описан в его конфиге.
+    # Только для сервера, где StroyApp один: на общем сервере с iduken порты
+    # 80/443 заняты nginx iduken, а api.stroyapp.kz описан в его конфиге.
     profiles:
       - standalone
     depends_on:
@@ -119,14 +119,14 @@ services:
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
     networks:
-      - toyhana-net
+      - stroyapp-net
 
   # ---------------------------------------------------------------------------
   # Certbot — Let's Encrypt SSL (запускается вручную, см. README-deploy.md)
   # ---------------------------------------------------------------------------
   certbot:
     image: certbot/certbot:latest
-    container_name: toyhana-certbot
+    container_name: stroyapp-certbot
     profiles:
       - certbot   # запускается только командой `docker compose --profile certbot run certbot ...`
     volumes:
@@ -137,7 +137,7 @@ services:
 
 
 networks:
-  toyhana-net:
+  stroyapp-net:
     driver: bridge
   iduken:
     external: true

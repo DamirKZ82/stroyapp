@@ -40,7 +40,7 @@ export default function HallScreen() {
   const styles = useThemedStyles(makeStyles);
   const colors = useColors();
   // hallGuid по типу необязателен: экран можно открыть и по неполному адресу
-  // (ссылка toiapp://hall), и тогда запрос ушёл бы на /search/halls/undefined.
+  // (ссылка stroyapp://hall), и тогда запрос ушёл бы на /search/halls/undefined.
   const { hallGuid, fromChat } = useLocalSearchParams<{ hallGuid?: string; fromChat?: string }>();
 
   const [hall, setHall] = useState<PublicHallDetails | null>(null);

@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 
 
-# Загружаем .env из корня проекта (toiapp-back/.env).
+# Загружаем .env из корня проекта (stroyapp-back/.env).
 # Если файл отсутствует — не падаем: переменные могут быть заданы средой
 # (например, на проде через systemd/docker).
 load_dotenv()
@@ -19,7 +19,7 @@ def _require(value, name):
     return value
 
 
-env = os.environ.get('TOYHANA_ENV', 'dev')   # 'dev' | 'stage' | 'prod'
+env = os.environ.get('STROYAPP_ENV', 'dev')   # 'dev' | 'stage' | 'prod'
 is_dev = env == 'dev'
 is_stage = env == 'stage'
 is_prod = env == 'prod'
@@ -28,25 +28,25 @@ is_prod = env == 'prod'
 config = {
     'env': env,
     # Режим задан переменной явно, а не взят по умолчанию. Постоянным кодам
-    # одного «по умолчанию» мало: сервер, на котором забыли TOYHANA_ENV,
+    # одного «по умолчанию» мало: сервер, на котором забыли STROYAPP_ENV,
     # тоже считает себя dev.
-    'env_explicit': 'TOYHANA_ENV' in os.environ,
+    'env_explicit': 'STROYAPP_ENV' in os.environ,
     'port': 1500 if is_prod else 1600 if is_stage else 4000,
 
     # Куда писать человеку, которого заблокировали или чьё объявление скрыли.
-    'support_email': 'supporttoiapp@gmail.com',
+    'support_email': 'supportstroyapp@gmail.com',
 
     # Адрес сервера снаружи — для ссылок в уведомлениях админам. Отсюда, а не
     # из заголовка Host запроса: его присылает клиент, и с чужим адресом
     # уведомление стало бы приманкой на поддельную страницу входа.
     # Пусто — уведомления уходят без ссылки.
-    'public_url': 'https://api.toiapp.kz' if is_prod else '' if is_stage else 'http://localhost:4000',
+    'public_url': 'https://api.stroyapp.kz' if is_prod else '' if is_stage else 'http://localhost:4000',
 
     'db': {
         'host': os.environ.get('DB_HOST', 'localhost'),
         'port': int(os.environ.get('DB_PORT', '5432')),
-        'name': os.environ.get('DB_NAME', 'toyhana'),
-        'user': os.environ.get('DB_USER', 'toyhana_user'),
+        'name': os.environ.get('DB_NAME', 'stroyapp'),
+        'user': os.environ.get('DB_USER', 'stroyapp_user'),
         'password': _require(os.environ.get('DB_PASSWORD'), 'DB_PASSWORD'),
         'min_size': 2,
         'max_size': 10,
@@ -82,7 +82,7 @@ config = {
         'sms_codes_per_day': 5,
         'sms_codes_per_day_phone': 15,
         'sms_codes_per_day_ip': 10,
-        # В разработке (TOYHANA_ENV=dev задан явно) SMS не уходят, код постоянный.
+        # В разработке (STROYAPP_ENV=dev задан явно) SMS не уходят, код постоянный.
         'sms_mock_code': '000000',
         # Сколько минут после кода есть на то, чтобы задать пароль.
         'setup_minutes': 15,

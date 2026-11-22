@@ -1,4 +1,4 @@
-# ToiApp — мобильное приложение (Expo / React Native)
+# StroyApp — мобильное приложение (Expo / React Native)
 
 Клиент и владелец в одном приложении: поиск залов и исполнителей, заявки,
 чат, избранное, свои объявления и календарь занятости.
@@ -26,21 +26,21 @@
 Expo Go не подходит: нужен dev-клиент (сборка `development`) или веб.
 
 ```bash
-cd toiapp-front
+cd stroyapp-front
 npm install
 npm start          # dev-клиент на телефоне, QR в консоли
 npm run web        # быстрый просмотр в браузере
 ```
 
 Адрес бэка берётся из `extra.apiBaseUrl` в `app.json` (прод:
-`https://api.toiapp.kz`). Для локального бэка его не правят, а задают
+`https://api.stroyapp.kz`). Для локального бэка его не правят, а задают
 переменную окружения:
 
 ```bash
 EXPO_PUBLIC_API_URL=http://192.168.X.X:4000 npm start
 ```
 
-Локальный бэк: `cd toiapp-back && python main.py`. В dev-режиме код из SMS
+Локальный бэк: `cd stroyapp-back && python main.py`. В dev-режиме код из SMS
 всегда `0000`.
 
 Веб-превью — только для проверки вёрстки и логики: вкладки там рисуются
@@ -49,7 +49,7 @@ EXPO_PUBLIC_API_URL=http://192.168.X.X:4000 npm start
 ## Структура
 
 ```
-toiapp-front/
+stroyapp-front/
 ├── app.json                 конфигурация Expo (плагины, разрешения, EAS Update)
 ├── eas.json                 профили сборки: development / preview / production
 ├── src/
@@ -78,7 +78,7 @@ npx expo export        # собирается ли бандл под все пл
 
 ## Сборки
 
-Аккаунт EAS `damirrisbekov`, проект `toiapp`. Глобальный `eas` может быть
+Аккаунт EAS `damirrisbekov`, проект `stroyapp`. Глобальный `eas` может быть
 старым — запускать через `npx eas-cli@latest`.
 
 ```bash
@@ -147,4 +147,4 @@ python scripts/make_store_header.py --compact  # ещё и вариант с м�
 ## Удаление аккаунта
 
 Профиль → «Удалить аккаунт» (`DELETE /profile`). Страница для магазинов:
-`https://api.toiapp.kz/account-deletion`.
+`https://api.stroyapp.kz/account-deletion`.

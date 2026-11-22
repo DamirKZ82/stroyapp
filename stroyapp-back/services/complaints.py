@@ -123,7 +123,7 @@ def notice_text(complaint_id: int, target_type: str, reason: str) -> str:
     # Ссылка открывает админку сразу на этой жалобе.
     where = (f"{config['public_url']}/admin#complaints/{complaint_id}"
              if config['public_url'] else 'админка → Жалобы')
-    return (f'🚩 ToiApp: новая жалоба №{complaint_id}\n'
+    return (f'🚩 StroyApp: новая жалоба №{complaint_id}\n'
             f'На что: {TARGET_LABELS[target_type].lower()}\n'
             f'Причина: {REASON_LABELS[reason]}\n'
             f'Разобрать: {where}')

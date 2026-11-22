@@ -49,7 +49,7 @@ import { intOrNull } from '@/utils/number';
 const PAGE_SIZE = 20;
 // Ключ остался от прежнего названия приложения. Переименовать — значит
 // потерять выбранный город у всех, кто уже пользуется приложением.
-const SAVED_CITY_KEY = 'toyhana.selectedCityId';
+const SAVED_CITY_KEY = 'stroyapp.selectedCityId';
 /** Дальше этого от ближайшего нашего города — «мы у вас пока не работаем». */
 const NEAREST_CITY_KM = 50;
 /**

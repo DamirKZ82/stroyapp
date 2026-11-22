@@ -4,6 +4,7 @@
 - создание FastAPI
 - подключение handlers (ошибки, CORS, автосборка роутеров)
 """
+import asyncio
 from contextlib import asynccontextmanager
 import pathlib
 
@@ -24,6 +25,7 @@ from handlers.h01_errors import (
 from handlers.h02_cors import setup_cors
 from handlers.h04_routes import setup_routes
 from libs.date import get_timestamp_now
+from libs.settings import load_settings, reload_forever
 from services.seed import apply_migrations, seed_all
 
 
@@ -33,9 +35,14 @@ async def lifespan(app: FastAPI):
     await init_db()
     await apply_migrations()
     await seed_all()
+    # Ключи интеграций из базы — до первого запроса; потом раз в полминуты
+    # (их могли поменять через другой воркер).
+    await load_settings()
+    reloader = asyncio.create_task(reload_forever())
     print(f"[{get_timestamp_now()}] 🚀 Server started on port {config['port']} (env={config['env']})")
     yield
     # --- Остановка ---
+    reloader.cancel()
     await close_db()
     print(f"[{get_timestamp_now()}] 🛑 Server stopped")
 

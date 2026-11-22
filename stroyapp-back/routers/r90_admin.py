@@ -37,7 +37,7 @@ from handlers.h03_auth import auth_admin
 from libs.common import fit_to_sql, new_guid
 from libs.date import get_timestamp_now
 from libs.phone import normalize_phone
-from routers.r01_auth import REVIEW_PHONE
+from routers.r01_auth import review_phone
 from services.moderation import block_user, log_action, unblock_user
 
 
@@ -191,11 +191,11 @@ async def list_service_users(admin=Depends(auth_admin)):
 async def create_service_user(body: CreateServiceUserBody, admin=Depends(auth_admin)):
     phone = normalize_phone(body.phone)
 
-    if REVIEW_PHONE is not None and phone == REVIEW_PHONE:
+    if phone == review_phone():
         raise WarnException(
             409,
-            'Этот номер уже задан на сервере как REVIEW_PHONE — '
-            'у него свой код из REVIEW_CODE. Выберите другой номер.',
+            'Этот номер уже задан на сервере как демо-номер для ревью — '
+            'у него свой код из «Настроек». Выберите другой номер.',
         )
 
     existing = await query_db(f"""

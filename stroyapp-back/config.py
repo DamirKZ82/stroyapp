@@ -1,6 +1,9 @@
 """
 Несекретные параметры проекта.
-Секреты — в .env (DB_PASSWORD, JWT_SECRET, MOBIZON_API_KEY, ...).
+Секреты сервера — в .env (DB_PASSWORD, JWT_SECRET, SETTINGS_KEY). Ключи
+интеграций (касса, SMS, Telegram, 2ГИС, демо-вход) админ задаёт в админке —
+они лежат в базе (libs/settings.py) и перекрывают значения ниже. Переменные
+окружения для них — запасной вариант для старых выкладок.
 """
 import os
 from dotenv import load_dotenv
@@ -115,6 +118,12 @@ config = {
         'api_url': os.environ.get('FREEDOMPAY_API_URL', 'https://api.freedompay.kz'),
         # 1 — тестовый режим кассы (деньги не списываются).
         'testing_mode': os.environ.get('FREEDOMPAY_TESTING', '0'),
+    },
+
+    # SMS через Mobizon (libs/sms.py). Без ключа коды на проде не уходят.
+    'sms': {
+        'mobizon_api_key': os.environ.get('MOBIZON_API_KEY', '').strip(),
+        'mobizon_sender': os.environ.get('MOBIZON_SENDER', '').strip(),
     },
 
     'telegram': {

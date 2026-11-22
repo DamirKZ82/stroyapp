@@ -580,3 +580,17 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
+
+-- =========================================================================
+-- Ключи и настройки интеграций (libs/settings.py)
+--
+-- Касса, SMS, Telegram, 2ГИС, демо-вход — то, что админ меняет в админке
+-- без выкладки. Секреты зашифрованы ключом SETTINGS_KEY из окружения: дамп
+-- базы без него ключей не раскрывает. Нет строки — действует .env.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS app_settings (
+    key         VARCHAR(100) PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  CHAR(19) NOT NULL,
+    updated_by  INT
+);

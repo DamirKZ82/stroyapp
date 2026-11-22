@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { ApiError, dictsApi, providersApi } from '@/api';
 import type { OwnerProviderFull, ProviderBody } from '@/api';
-import type { Category, City, PriceUnit, ProviderAttrType } from '@/api/types';
+import type { Category, City, ListingKind, PriceItem, PriceUnit, ProviderAttrType } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Card, RowGroup, SectionLabel, SwitchRow } from '@/components/Card';
 import { Chip, ChipWrap } from '@/components/Chip';
@@ -16,10 +16,11 @@ import { PhotoStrip } from '@/components/PhotoStrip';
 import { PhotoViewer } from '@/components/PhotoViewer';
 import { Screen } from '@/components/Screen';
 import { Segment } from '@/components/Segment';
+import { Sheet } from '@/components/Sheet';
 import { space, type ThemeColors } from '@/theme';
 import { useThemedStyles } from '@/theme/scheme';
 import { confirmDestructive, showThen } from '@/utils/alert';
-import { isVenueCategory } from '@/utils/category';
+import { KIND_KEY, KINDS } from '@/utils/category';
 import { parseCoord, splitCoordPaste } from '@/utils/coords';
 import { dictName } from '@/utils/i18nDict';
 import { useLang } from '@/utils/lang';
@@ -27,17 +28,10 @@ import { useOnTop } from '@/utils/nav';
 import { intOrNull, onlyDigits } from '@/utils/number';
 import { photoUrl } from '@/utils/photo';
 import { pickPhotos, type PickedPhoto } from '@/utils/pickPhotos';
-import { UNIT_KEY } from '@/utils/priceUnit';
+import { UNITS, unitName } from '@/utils/priceUnit';
 
-/**
- * Единицы цены двумя строками по две. В одну строку из четырёх русское
- * «за мероприятие» не помещается даже с уменьшением шрифта, которое делает
- * Segment, и обрезается многоточием.
- */
-const UNIT_ROWS: PriceUnit[][] = [
-  ['event', 'hour'],
-  ['person', 'day'],
-];
+/** Единица по умолчанию: материалы чаще продают штуками, работы — за м². */
+const DEFAULT_UNIT: Record<ListingKind, PriceUnit> = { material: 'piece', service: 'm2' };
 
 /** Столько фото на карточку принимает сервер; лишние он отклоняет всей пачкой. */
 const PHOTO_LIMIT = 20;
@@ -47,14 +41,29 @@ const PHOTO_LIMIT = 20;
 const NAME_MAX = 200;
 const DESCRIPTION_MAX = 5000;
 const PHONE_MAX = 20;
+const ADDRESS_MAX = 500;
+const ITEM_NAME_MAX = 300;
+/** Столько позиций в прайсе принимает сервер (ITEMS_LIMIT). */
+const ITEMS_LIMIT = 500;
 /** Девять цифр — это до 999 999 999 ₸; сервер принимает цену до миллиарда. */
 const PRICE_DIGITS = 9;
 
-type FieldKey = 'category' | 'city' | 'name' | 'lat' | 'lng';
+type FieldKey = 'category' | 'city' | 'name' | 'items' | 'lat' | 'lng';
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
 /** Порядок полей на экране: в полосе у кнопки показываем ошибку верхнего. */
-const FIELD_ORDER: FieldKey[] = ['category', 'city', 'name', 'lat', 'lng'];
+const FIELD_ORDER: FieldKey[] = ['category', 'city', 'name', 'items', 'lat', 'lng'];
+
+/** Строка прайса в форме: цена — текстом, как в поле ввода. */
+interface ItemDraft {
+  key: string;
+  name: string;
+  unit: PriceUnit;
+  price: string;
+}
+
+/** Чью единицу выбирают в шторке: «цена от» или строки прайса. */
+type UnitTarget = { kind: 'from' } | { kind: 'item'; key: string };
 
 /** Фото, выбранное на телефоне и ещё не отправленное на сервер. */
 interface PendingPhoto extends PickedPhoto {
@@ -62,9 +71,9 @@ interface PendingPhoto extends PickedPhoto {
 }
 
 /**
- * Карточка исполнителя: создание, правка, фото и удаление.
+ * Объявление магазина или бригады: создание, правка, прайс, фото и удаление.
  *
- * Фото здесь, в отличие от зала, можно выбрать ещё до первого сохранения:
+ * Фото и прайс можно заполнить ещё до первого сохранения:
  * они копятся на телефоне и уходят на сервер сразу после того, как сама
  * карточка создана или изменена. Человек заполняет всё за один проход, а не
  * сохраняет пустую карточку, чтобы потом вернуться за фотографиями.
@@ -94,8 +103,15 @@ export default function ProviderFormScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  // Вид выбирают раньше категории: категорий двух видов вместе слишком много.
+  const [kind, setKind] = useState<ListingKind>('material');
   const [priceFrom, setPriceFrom] = useState('');
-  const [priceUnit, setPriceUnit] = useState<PriceUnit>('event');
+  const [priceUnit, setPriceUnit] = useState<PriceUnit>(DEFAULT_UNIT.material);
+  const [items, setItems] = useState<ItemDraft[]>([]);
+  // Прайс уходит отдельным запросом и целиком: шлём, только если его меняли.
+  const [itemsDirty, setItemsDirty] = useState(false);
+  const [unitTarget, setUnitTarget] = useState<UnitTarget | null>(null);
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [attrIds, setAttrIds] = useState<number[]>([]);
@@ -155,9 +171,7 @@ export default function ProviderFormScreen() {
       ]);
       if (request !== loadRequest.current) return;
 
-      // Рестораны ведутся отдельно, как заведение с залами: в карточке
-      // исполнителя эту категорию не предлагаем.
-      const selectable = cats.items.filter((c) => !isVenueCategory(c));
+      const selectable = cats.items;
       setCategories(selectable);
       setCities(cityList.items);
 
@@ -169,15 +183,25 @@ export default function ProviderFormScreen() {
         setName(v.name);
         setDescription(v.description ?? '');
         setPhone(v.phone ?? '');
+        setAddress(v.address ?? '');
         setPriceFrom(v.price_from != null ? String(v.price_from) : '');
-        setPriceUnit(v.price_unit ?? 'event');
+        const vKind = selectable.find((c) => c.id === v.category_id)?.kind ?? 'material';
+        setKind(vKind);
+        setPriceUnit(v.price_unit ?? DEFAULT_UNIT[vKind]);
+        setItems(v.items.map(toDraft));
+        setItemsDirty(false);
         setLat(v.latitude != null ? String(v.latitude) : '');
         setLng(v.longitude != null ? String(v.longitude) : '');
         setAttrIds(v.attrs.map((a) => a.id));
         setIsActive(v.is_active);
         startCategoryId = v.category_id;
-      } else if (presetCategoryId !== null && selectable.some((c) => c.id === presetCategoryId)) {
-        startCategoryId = presetCategoryId;
+      } else {
+        const preset = selectable.find((c) => c.id === presetCategoryId);
+        if (preset) {
+          startCategoryId = preset.id;
+          setKind(preset.kind);
+          setPriceUnit(DEFAULT_UNIT[preset.kind]);
+        }
       }
       setCategoryId(startCategoryId);
 
@@ -232,6 +256,49 @@ export default function ProviderFormScreen() {
     void loadAttrTypes(cat.code);
   };
 
+  const selectKind = (next: ListingKind) => {
+    if (next === kind) return;
+    setKind(next);
+    // Категория другого вида к новому не подходит, а с ней и её атрибуты.
+    const current = categories.find((c) => c.id === categoryId);
+    if (current && current.kind !== next) {
+      setCategoryId(null);
+      setAttrTypes([]);
+      setAttrIds([]);
+    }
+  };
+
+  const itemSeq = useRef(0);
+
+  const addItem = () => {
+    if (items.length >= ITEMS_LIMIT) {
+      setError(t('owner.items_limit', { limit: ITEMS_LIMIT }));
+      return;
+    }
+    // Единица — как у прошлой строки: прайс обычно идёт одним родом товара.
+    const unit = items[items.length - 1]?.unit ?? DEFAULT_UNIT[kind];
+    setItems((prev) => [...prev, { key: `n-${++itemSeq.current}`, name: '', unit, price: '' }]);
+    setItemsDirty(true);
+  };
+
+  const changeItem = (key: string, patch: Partial<ItemDraft>) => {
+    setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
+    setItemsDirty(true);
+    clearErrors('items');
+  };
+
+  const removeItem = (key: string) => {
+    setItems((prev) => prev.filter((it) => it.key !== key));
+    setItemsDirty(true);
+    clearErrors('items');
+  };
+
+  const pickUnit = (unit: PriceUnit) => {
+    if (unitTarget?.kind === 'from') setPriceUnit(unit);
+    else if (unitTarget?.kind === 'item') changeItem(unitTarget.key, { unit });
+    setUnitTarget(null);
+  };
+
   const toggleAttr = (id: number) =>
     setAttrIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
@@ -279,6 +346,10 @@ export default function ProviderFormScreen() {
     if (!categoryId) found.category = t('owner.provider_category_required');
     if (!city) found.city = t('owner.provider_city_required');
     if (!name.trim()) found.name = t('owner.provider_name_required');
+    // Совсем пустые строки просто отбрасываем, а цена без названия — ошибка:
+    // молча выбросить набранную цену было бы хуже.
+    const filledItems = items.filter((it) => it.name.trim() || it.price);
+    if (filledItems.some((it) => !it.name.trim())) found.items = t('owner.item_name_required');
     if (latitude === undefined) found.lat = t('owner.latitude_invalid');
     if (longitude === undefined) found.lng = t('owner.longitude_invalid');
     // Одна координата без другой бесполезна: маршрут в 2GIS строится только
@@ -297,12 +368,19 @@ export default function ProviderFormScreen() {
 
     const descriptionText = description.trim();
     const phoneText = phone.trim();
+    const addressText = address.trim();
+    const priceItems: PriceItem[] = filledItems.map((it) => ({
+      name: it.name.trim(),
+      unit: it.unit,
+      price: intOrNull(it.price),
+    }));
     const body: ProviderBody = {
       category_id: categoryId,
       city_id: city.id,
       name: name.trim(),
       description: descriptionText || null,
       phone: phoneText || null,
+      address: addressText || null,
       latitude: latitude ?? null,
       longitude: longitude ?? null,
       price_from: intOrNull(priceFrom),
@@ -336,6 +414,7 @@ export default function ProviderFormScreen() {
           // стирает; шлём её, только когда стирать есть что.
           description: descriptionText || (provider.description ? '' : null),
           phone: phoneText || (provider.phone ? '' : null),
+          address: addressText || (provider.address ? '' : null),
           is_active: isActive,
         });
         saved = res.provider;
@@ -350,7 +429,23 @@ export default function ProviderFormScreen() {
     setProvider(saved);
     setIsActive(saved.is_active);
 
-    // 2) Фото, выбранные до сохранения.
+    // 2) Прайс. У новой карточки — если в нём что-то есть, у старой — если
+    // его меняли: иначе каждое сохранение переписывало бы его заново.
+    if (itemsDirty || (!provider && priceItems.length > 0)) {
+      try {
+        const res = await providersApi.saveItems(saved.guid, priceItems);
+        setItems(res.items.map(toDraft));
+        setItemsDirty(false);
+        setProvider((prev) => (prev ? { ...prev, items: res.items } : prev));
+      } catch (e) {
+        // Карточка уже сохранена — говорим об этом прямо.
+        const reason = e instanceof ApiError ? `\n${e.message}` : '';
+        fail(`${t('owner.items_save_failed')}${reason}`);
+        return;
+      }
+    }
+
+    // 3) Фото, выбранные до сохранения.
     if (pendingPhotos.length > 0) {
       setUploading(true);
       try {
@@ -376,7 +471,7 @@ export default function ProviderFormScreen() {
       setUploading(false);
     }
 
-    // 3) Успех. Форму закрыли или накрыли другим экраном, пока шёл запрос:
+    // 4) Успех. Форму закрыли или накрыли другим экраном, пока шёл запрос:
     // «Сохранено» поверх чужого экрана ни к чему, а «назад» закрыл бы его.
     // Просто отпускаем кнопку, чтобы после возврата форма не крутила вертушку
     // без конца. Повторное «Сохранить» безопасно: карточка уже есть, и оно
@@ -570,10 +665,16 @@ export default function ProviderFormScreen() {
     >
       {header}
 
+      <Segment
+        value={kind}
+        options={KINDS.map((k) => ({ value: k, label: t(KIND_KEY[k]) }))}
+        onChange={selectKind}
+      />
+
       <SectionLabel>{t('owner.provider_category_label')}</SectionLabel>
       <View style={styles.chipsBlock}>
         <ChipWrap>
-          {categories.map((cat) => (
+          {categories.filter((cat) => cat.kind === kind).map((cat) => (
             <Chip
               key={cat.id}
               label={dictName(cat, lang)}
@@ -582,7 +683,7 @@ export default function ProviderFormScreen() {
             />
           ))}
         </ChipWrap>
-        <CategoryError message={errors.category} />
+        <FieldErrorText message={errors.category} />
       </View>
 
       <Card>
@@ -624,8 +725,18 @@ export default function ProviderFormScreen() {
           />
         </Field>
 
-        {/* Телефон — как введён, без маски мобильного: у студии или агентства
-            бывает городской номер, а сервер хранит строку как есть. */}
+        <Field label={t('owner.provider_address_label')}>
+          <Input
+            value={address}
+            onChangeText={setAddress}
+            placeholder={t('owner.provider_address_placeholder')}
+            accessibilityLabel={t('owner.provider_address_label')}
+            maxLength={ADDRESS_MAX}
+          />
+        </Field>
+
+        {/* Телефон — как введён, без маски мобильного: у магазина бывает
+            городской номер, а сервер хранит строку как есть. */}
         <Field label={t('owner.provider_phone_label')}>
           <Input
             value={phone}
@@ -651,18 +762,79 @@ export default function ProviderFormScreen() {
         </Field>
 
         <Field label={t('owner.provider_price_unit_label')}>
-          <View style={styles.units}>
-            {UNIT_ROWS.map((row) => (
-              <Segment
-                key={row.join('-')}
-                value={priceUnit}
-                onChange={setPriceUnit}
-                options={row.map((unit) => ({ value: unit, label: t(UNIT_KEY[unit]) }))}
-              />
-            ))}
-          </View>
+          <SelectField
+            value={unitName(t, priceUnit)}
+            placeholder={t('owner.unit_placeholder')}
+            onPress={() => {
+              Keyboard.dismiss();
+              setUnitTarget({ kind: 'from' });
+            }}
+          />
         </Field>
       </Card>
+
+      <SectionLabel>{t('owner.items_label')}</SectionLabel>
+      <Text style={styles.sectionHint}>
+        {kind === 'material' ? t('owner.items_hint_material') : t('owner.items_hint_service')}
+      </Text>
+      {items.map((item, index) => (
+        <Card key={item.key}>
+          <Field label={t('owner.item_name_label', { n: index + 1 })}>
+            <Input
+              value={item.name}
+              onChangeText={(value) => changeItem(item.key, { name: value })}
+              placeholder={
+                kind === 'material'
+                  ? t('owner.item_name_placeholder_material')
+                  : t('owner.item_name_placeholder_service')
+              }
+              accessibilityLabel={t('owner.item_name_label', { n: index + 1 })}
+              maxLength={ITEM_NAME_MAX}
+              invalid={!!errors.items && !item.name.trim() && !!item.price}
+            />
+          </Field>
+          <View style={styles.pair}>
+            <View style={styles.half}>
+              <Field label={t('owner.item_price_label')}>
+                <Input
+                  value={item.price}
+                  onChangeText={(value) => changeItem(item.key, { price: onlyDigits(value, PRICE_DIGITS) })}
+                  placeholder={t('owner.item_price_placeholder')}
+                  accessibilityLabel={t('owner.item_price_label')}
+                  keyboardType="number-pad"
+                />
+              </Field>
+            </View>
+            <View style={styles.half}>
+              <Field label={t('owner.item_unit_label')}>
+                <SelectField
+                  value={unitName(t, item.unit)}
+                  placeholder={t('owner.unit_placeholder')}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setUnitTarget({ kind: 'item', key: item.key });
+                  }}
+                />
+              </Field>
+            </View>
+          </View>
+          <Button
+            label={t('owner.item_remove')}
+            variant="text"
+            tone="danger"
+            small
+            onPress={() => removeItem(item.key)}
+          />
+        </Card>
+      ))}
+      {errors.items ? <FieldErrorText message={errors.items} /> : null}
+      <Button
+        label={t('owner.item_add')}
+        variant="outline"
+        icon="plus"
+        onPress={addItem}
+        disabled={busy}
+      />
 
       {attrTypes.length > 0 ? (
         <>
@@ -777,6 +949,28 @@ export default function ProviderFormScreen() {
         onClose={() => setCityOpen(false)}
       />
 
+      <Sheet
+        visible={unitTarget !== null}
+        onClose={() => setUnitTarget(null)}
+        title={t('owner.unit_sheet_title')}
+      >
+        <ChipWrap>
+          {UNITS.map((unit) => {
+            const current = unitTarget?.kind === 'from'
+              ? priceUnit
+              : items.find((it) => unitTarget?.kind === 'item' && it.key === unitTarget.key)?.unit;
+            return (
+              <Chip
+                key={unit}
+                label={unitName(t, unit) ?? unit}
+                selected={current === unit}
+                onPress={() => pickUnit(unit)}
+              />
+            );
+          })}
+        </ChipWrap>
+      </Sheet>
+
       <PhotoViewer
         visible={viewerIndex !== null}
         uris={fullUris}
@@ -787,13 +981,22 @@ export default function ProviderFormScreen() {
   );
 }
 
+function toDraft(item: PriceItem, index: number): ItemDraft {
+  return {
+    key: item.guid ?? `s-${index}`,
+    name: item.name,
+    unit: item.unit,
+    price: item.price != null ? String(item.price) : '',
+  };
+}
+
 /**
- * Ошибка под чипами категории. Чипы не в Field, поэтому диктору её
+ * Ошибка под чипами категории или прайсом. Они не в Field, поэтому диктору её
  * проговариваем сами. Отдельным компонентом над карточкой с полями, а не
  * в самом экране: эффекты детей срабатывают раньше эффекта родителя, и
  * верхнюю ошибку формы диктор прочёл бы последней.
  */
-function CategoryError({ message }: { message?: string }) {
+function FieldErrorText({ message }: { message?: string }) {
   const styles = useThemedStyles(makeStyles);
   useAnnounce(message);
   if (!message) return null;
@@ -813,7 +1016,7 @@ const makeStyles = (colors: ThemeColors) =>
     // Тот же вид, что у ошибки под полем в Field: чипы категории стоят вне
     // карточки, и обернуть их в Field значило бы потерять подпись раздела.
     fieldError: { fontSize: 13, color: colors.danger, paddingHorizontal: 4 },
-    units: { gap: 8 },
+    sectionHint: { fontSize: 13, color: colors.muted, paddingHorizontal: 4 },
     pair: { flexDirection: 'row', gap: space.gap },
     half: { flex: 1, minWidth: 0 },
     // Удаление — в самом низу и с отступом от остального: мимо него не

@@ -2,11 +2,6 @@ import { apiClient } from './client';
 import type { Review, ReviewsResponse } from './types';
 
 export const reviewsApi = {
-  async list(hallGuid: string): Promise<ReviewsResponse> {
-    const { data } = await apiClient.get<ReviewsResponse>(`/halls/${hallGuid}/reviews`);
-    return data;
-  },
-
   async listProvider(providerGuid: string): Promise<ReviewsResponse> {
     const { data } = await apiClient.get<ReviewsResponse>(
       `/providers/${providerGuid}/reviews`,

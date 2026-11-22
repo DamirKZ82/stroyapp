@@ -7,7 +7,6 @@ import { ApiError, favoritesApi } from '@/api';
 import type { FavoriteItem } from '@/api/types';
 import { Button } from '@/components/Button';
 import { EmptyState, ErrorBanner, Loader } from '@/components/Feedback';
-import { HallCard } from '@/components/HallCard';
 import { ProviderCard } from '@/components/ProviderCard';
 import { Screen, ScreenTitle, TAB_LIST_CONTENT } from '@/components/Screen';
 import { useAuthGateStore } from '@/store/authGateStore';
@@ -22,7 +21,7 @@ import { pushOnce } from '@/utils/nav';
 const NO_ITEMS: FavoriteItem[] = [];
 
 /**
- * Вкладка «Избранное»: залы и исполнители вперемешку, в порядке сервера.
+ * Вкладка «Избранное»: магазины и бригады вперемешку, в порядке сервера.
  *
  * Все состояния — гость, первая загрузка, пусто, ошибка — живут в одном
  * списке, а не в отдельных экранах: заголовок вкладки стоит на месте и не
@@ -33,7 +32,6 @@ export default function FavoritesScreen() {
   const colors = useColors();
   const isAuthed = useIsAuthed();
   const openGate = useAuthGateStore((s) => s.open);
-  const toggleHall = useFavoritesStore((s) => s.toggle);
   const toggleProvider = useFavoritesStore((s) => s.toggleProvider);
 
   const [items, setItems] = useState<FavoriteItem[]>(NO_ITEMS);
@@ -113,8 +111,7 @@ export default function FavoritesScreen() {
 
       // Всегда false, а не «наоборот от того, что в сторе»: если стор не
       // догрузился, переключение по нему превратилось бы в «добавить».
-      if (item.type === 'provider') await toggleProvider(guid, false);
-      else await toggleHall(guid, false);
+      await toggleProvider(guid, false);
       removing.current.delete(guid);
 
       // Стор глотает ошибку запроса и молча возвращает guid на место — это
@@ -128,34 +125,22 @@ export default function FavoritesScreen() {
       );
       setError(t('common.error_generic'));
     },
-    [toggleHall, toggleProvider, t],
+    [toggleProvider, t],
   );
 
   const keyExtractor = useCallback((item: FavoriteItem) => `${item.type}:${guidOf(item)}`, []);
 
   const renderItem = useCallback<ListRenderItem<FavoriteItem>>(
-    ({ item, index }) =>
-      // showAvailability={false}: у избранного нет даты, плашке «свободно»
-      // здесь не из чего взяться.
-      item.type === 'provider' ? (
-        <ProviderCard
-          item={item}
-          isFavorite
-          showAvailability={false}
-          onToggleFavorite={() => void remove(item, index)}
-          onPress={() =>
-            pushOnce({ pathname: '/provider', params: { providerGuid: item.provider.guid } })
-          }
-        />
-      ) : (
-        <HallCard
-          item={item}
-          isFavorite
-          showAvailability={false}
-          onToggleFavorite={() => void remove(item, index)}
-          onPress={() => pushOnce({ pathname: '/hall', params: { hallGuid: item.hall.guid } })}
-        />
-      ),
+    ({ item, index }) => (
+      <ProviderCard
+        item={item}
+        isFavorite
+        onToggleFavorite={() => void remove(item, index)}
+        onPress={() =>
+          pushOnce({ pathname: '/provider', params: { providerGuid: item.provider.guid } })
+        }
+      />
+    ),
     [remove],
   );
 
@@ -214,7 +199,7 @@ export default function FavoritesScreen() {
 }
 
 function guidOf(item: FavoriteItem): string {
-  return item.type === 'provider' ? item.provider.guid : item.hall.guid;
+  return item.provider.guid;
 }
 
 const styles = StyleSheet.create({

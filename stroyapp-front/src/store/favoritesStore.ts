@@ -3,11 +3,10 @@ import { favoritesApi } from '@/api';
 import { useAuthStore } from './authStore';
 
 interface FavoritesState {
-  /** Множество guid'ов (UUID — глобально уникальны, залы и исполнители вместе). */
+  /** Множество guid'ов избранных объявлений (магазины и бригады). */
   guids: Set<string>;
   loaded: boolean;
   load: () => Promise<void>;
-  toggle: (hallGuid: string, isNowFav: boolean) => Promise<void>;
   toggleProvider: (providerGuid: string, isNowFav: boolean) => Promise<void>;
   isFav: (guid: string) => boolean;
   clear: () => void;
@@ -39,8 +38,7 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
       if (stale()) return;
       const guids = new Set<string>();
       for (const i of items) {
-        const g = i.type === 'provider' ? i.provider?.guid : i.hall?.guid;
-        if (g) guids.add(g);
+        if (i.provider?.guid) guids.add(i.provider.guid);
       }
       for (const [guid, isFav] of touched) {
         if (isFav) guids.add(guid);
@@ -52,22 +50,6 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
       set({ loaded: true });
     } finally {
       loading -= 1;
-    }
-  },
-
-  toggle: async (hallGuid, isNowFav) => {
-    const next = new Set(get().guids);
-    if (isNowFav) next.add(hallGuid); else next.delete(hallGuid);
-    set({ guids: next });
-    touch(hallGuid, isNowFav);
-    try {
-      if (isNowFav) await favoritesApi.add(hallGuid);
-      else await favoritesApi.remove(hallGuid);
-    } catch {
-      touch(hallGuid, !isNowFav);
-      const rollback = new Set(get().guids);
-      if (isNowFav) rollback.delete(hallGuid); else rollback.add(hallGuid);
-      set({ guids: rollback });
     }
   },
 

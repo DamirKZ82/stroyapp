@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 
 /** На что можно пожаловаться. */
-export type ComplaintTarget = 'hall' | 'provider' | 'review' | 'chat';
+export type ComplaintTarget = 'provider' | 'review' | 'chat';
 
 /** Причина жалобы. Набор допустимых причин у каждого вида жалобы свой — см. экран report. */
 export type ComplaintReason = 'false_info' | 'photos' | 'fraud' | 'offensive' | 'spam' | 'other';

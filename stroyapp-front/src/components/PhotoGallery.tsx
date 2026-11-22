@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import type { HallPhoto } from '@/api/types';
+import type { Photo } from '@/api/types';
 import { radius, type ThemeColors } from '@/theme';
 import { useColors, useThemedStyles } from '@/theme/scheme';
 import { photoUrl } from '@/utils/photo';
@@ -30,7 +30,7 @@ interface Slide {
 }
 
 /**
- * Фото зала или исполнителя: листаются вбок, по нажатию открываются на
+ * Фото объявления: листаются вбок, по нажатию открываются на
  * весь экран.
  *
  * Ширину берём из вёрстки: галерея занимает всю ширину своего родителя,
@@ -38,7 +38,7 @@ interface Slide {
  * экран). Ширина окна — только догадка для первого кадра, чтобы фото не
  * появлялось с опозданием на кадр.
  */
-export function PhotoGallery({ photos }: { photos: HallPhoto[] }) {
+export function PhotoGallery({ photos }: { photos: Photo[] }) {
   const { t } = useTranslation();
   const styles = useThemedStyles(makeStyles);
   const colors = useColors();

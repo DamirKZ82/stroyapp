@@ -2,12 +2,11 @@ import { useEffect } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import type { CalendarDay } from '@/api/types';
 import { space } from '@/theme';
 import { monthOf } from '@/utils/format';
 import { serverToday } from '@/utils/serverTime';
 import { Button } from './Button';
-import { CalendarLegend, MonthCalendar } from './MonthCalendar';
+import { CalendarLegend, MonthCalendar, type CalendarDay } from './MonthCalendar';
 import { Sheet } from './Sheet';
 
 interface DatePickerSheetProps {

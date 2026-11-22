@@ -14,7 +14,7 @@ import { useScheme, useSyncNativeScheme } from '@/theme/scheme';
 // Побочный эффект: настраивает i18next до первой отрисовки.
 import '@/i18n';
 
-// Экран, открытый по ссылке (stroyapp://hall?...), должен лежать поверх вкладок:
+// Экран, открытый по ссылке (stroyapp://provider?...), должен лежать поверх вкладок:
 // иначе с него некуда вернуться.
 export const unstable_settings = { anchor: '(tabs)' };
 
@@ -191,7 +191,6 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" />
         {/* Каталог открыт и гостю. */}
-        <Stack.Screen name="hall" />
         <Stack.Screen name="provider" />
         {/* Личные экраны. Сюда попадают только после входа, но токен может
             пропасть и посреди работы: сервер ответил 401, человек вышел или
@@ -206,10 +205,6 @@ export default function RootLayout() {
           <Stack.Screen name="report" />
           <Stack.Screen name="blocked-users" />
           <Stack.Screen name="my-listings" />
-          <Stack.Screen name="venue" />
-          <Stack.Screen name="venue-form" />
-          <Stack.Screen name="hall-form" />
-          <Stack.Screen name="hall-calendar" />
           <Stack.Screen name="incoming-bookings" />
           <Stack.Screen name="booking" />
           <Stack.Screen name="provider-form" />

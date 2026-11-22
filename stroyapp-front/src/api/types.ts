@@ -34,55 +34,81 @@ export interface City {
   name_kz: string;
 }
 
-export interface Amenity {
-  id: number;
-  code: string;
-  name_ru: string;
-  name_kz: string;
-  icon: string | null;
-}
-
-export interface EventType {
-  id: number;
-  code: string;
-  name_ru: string;
-  name_kz: string;
-}
-
 // ---------------------- Categories / Providers ----------------------
+
+/**
+ * Вид объявления: магазин стройматериалов или бригада / мастер.
+ * Задаётся категорией.
+ */
+export type ListingKind = 'material' | 'service';
 
 export interface Category {
   id: number;
   code: string;
+  kind: ListingKind;
   name_ru: string;
   name_kz: string;
   icon: string | null;
   sort_order: number;
 }
 
-/** Краткая категория внутри карточки/деталей исполнителя/брони. */
+/** Краткая категория внутри карточки и деталей объявления. */
 export interface CategoryBrief {
   id: number;
   code: string;
+  kind?: ListingKind;
   name_ru: string;
   name_kz: string;
 }
 
-/** Атрибут исполнителя — та же форма, что и Amenity (id/code/name/icon). */
-export type ProviderAttr = Amenity;
+/** Признак объявления: доставка, рассрочка, договор, гарантия… */
+export interface ProviderAttr {
+  id: number;
+  code: string;
+  name_ru: string;
+  name_kz: string;
+  icon: string | null;
+}
 
-export interface ProviderAttrType extends Amenity {
+export interface ProviderAttrType extends ProviderAttr {
   sort_order?: number;
   category_code?: string;
 }
 
-export type PriceUnit = 'event' | 'hour' | 'person' | 'day';
+/** Единица измерения прайса (коды — libs/units.py на бэке). */
+export type PriceUnit =
+  | 'piece' | 'm2' | 'm3' | 'm' | 'kg' | 'ton' | 'bag' | 'pack'
+  | 'roll' | 'sheet' | 'liter' | 'hour' | 'day' | 'trip' | 'object' | 'work';
+
+export interface Unit {
+  code: PriceUnit;
+  name_ru: string;
+  name_kz: string;
+}
+
+/** Позиция прайса: товар магазина или работа бригады. price null — договорная. */
+export interface PriceItem {
+  guid?: string;
+  name: string;
+  unit: PriceUnit;
+  price: number | null;
+  sort_order?: number;
+}
+
+/** Позиция прайса, совпавшая с текстом поиска, — под карточкой в списке. */
+export interface MatchedItem {
+  guid: string;
+  name: string;
+  unit: PriceUnit;
+  price: number | null;
+}
 
 export interface ProviderBrief {
   id: number;
   guid: string;
   name: string;
   description: string | null;
+  address?: string | null;
   price_from: number | null;
   price_unit: PriceUnit | null;
   latitude?: number | null;
@@ -97,7 +123,8 @@ export interface ProviderCardData {
   main_photo: string | null;
   main_thumb: string | null;
   rating: { avg: number; count: number };
-  is_busy_on_date: boolean;
+  /** Позиции прайса, совпавшие с текстом поиска (пусто без текста). */
+  matched_items?: MatchedItem[];
 }
 
 export interface ProviderSearchResponse {
@@ -105,7 +132,23 @@ export interface ProviderSearchResponse {
   total: number;
   page: number;
   page_size: number;
-  date: string | null;
+}
+
+/** Строка поиска по прайсам: позиция + чьё объявление. */
+export interface ItemSearchRow {
+  item: { guid: string; name: string; unit: PriceUnit; price: number | null };
+  provider: { guid: string; name: string; address: string | null };
+  category: CategoryBrief;
+  city: City;
+  main_thumb: string | null;
+  rating: { avg: number; count: number };
+}
+
+export interface ItemSearchResponse {
+  items: ItemSearchRow[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export interface PublicProviderDetails {
@@ -114,6 +157,7 @@ export interface PublicProviderDetails {
   name: string;
   description: string | null;
   phone: string | null;
+  address: string | null;
   latitude: number | null;
   longitude: number | null;
   price_from: number | null;
@@ -121,141 +165,49 @@ export interface PublicProviderDetails {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  photos: HallPhoto[];
+  photos: Photo[];
   attrs: ProviderAttr[];
+  items: PriceItem[];
   category: CategoryBrief;
   city: City;
-}
-
-export interface Holiday {
-  date: string;
-  name_ru: string;
-  name_kz: string;
 }
 
 export interface ApiErrorBody {
   message?: string;
 }
 
-// ---------------------- Search / Hall / Venue ----------------------
-
-export interface HallBrief {
-  id: number;
-  guid: string;
-  name: string;
-  description: string | null;
-  area_sqm: number | null;
-  capacity_min: number | null;
-  capacity_max: number | null;
-  price_weekday: number;
-  price_weekend: number;
-}
-
-export interface VenueBrief {
-  id: number;
-  guid: string;
-  name: string;
-  address: string;
-  latitude: number | null;
-  longitude: number | null;
-}
-
-export interface HallCardData {
-  hall: HallBrief & { is_active?: boolean };
-  venue: VenueBrief & { is_active?: boolean };
-  city: City;
-  main_photo: string | null;
-  main_thumb: string | null;
-  rating: { avg: number; count: number };
-  price_on_date: number;
-  price_is_estimate: boolean;
-  is_busy_on_date: boolean;
-}
-
-export interface SearchResponse {
-  items: HallCardData[];
-  total: number;
-  page: number;
-  page_size: number;
-  date: string | null;
-  is_weekend_or_holiday: boolean | null;
-}
-
-export interface HallPhoto {
+export interface Photo {
   id: number;
   file_path: string;
   thumb_path: string;
   sort_order: number;
 }
 
-export interface HallDetails extends HallBrief {
-  venue_id: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  photos: HallPhoto[];
-  amenities: Amenity[];
-}
-
 // ---------------------- Bookings ----------------------
 
 export type BookingStatus = 'pending' | 'confirmed' | 'rejected' | 'cancelled';
 
-export type SubjectType = 'hall' | 'provider';
-
-/** Унифицированный subject брони/чата — зал или исполнитель. */
-export interface BookingSubject {
-  type: SubjectType;
-  guid: string | null;
-  name: string | null;
-  /** Для зала — название заведения; для исполнителя — null. */
-  parent_name: string | null;
-  deleted: boolean;
-  category_code?: string | null;
-}
-
 export interface Booking {
   id: number;
   guid: string;
+  /** Желаемая дата доставки или начала работ. */
   event_date: string;
-  guests_count: number;
-  event_type_id: number | null;
+  /** Адрес объекта. */
+  address: string | null;
   comment: string | null;
   status: BookingStatus;
   rejected_reason: string | null;
-  price_at_booking: number | null;
   created_at: string;
   updated_at: string;
-  subject: BookingSubject;
-  hall: {
-    id: number;
-    guid: string | null;
-    name: string | null;
-    venue_name: string | null;
-  } | null;
   provider: {
     id: number;
     guid: string | null;
     name: string | null;
     category_code: string | null;
+    category_kind: ListingKind | null;
   } | null;
-  hall_deleted: boolean;
+  provider_deleted: boolean;
   client?: { name: string | null; phone: string | null };
-}
-
-export interface CalendarDay {
-  date: string;
-  status: 'free' | 'pending' | 'confirmed' | 'past';
-  price: number | null;
-  is_weekend: boolean;
-}
-
-export interface CalendarResponse {
-  hall_guid?: string;
-  provider_guid?: string;
-  price_unit?: PriceUnit | null;
-  month: string;
-  items: CalendarDay[];
 }
 
 // ---------------------- Reviews ----------------------
@@ -279,14 +231,7 @@ export interface ReviewsResponse {
 
 // ---------------------- Favorites ----------------------
 
-export interface HallFavoriteItem extends HallCardData {
-  type: 'hall';
-  favorited_at: string;
-}
-
-export interface ProviderFavoriteItem extends ProviderCardData {
+export interface FavoriteItem extends ProviderCardData {
   type: 'provider';
   favorited_at: string;
 }
-
-export type FavoriteItem = HallFavoriteItem | ProviderFavoriteItem;

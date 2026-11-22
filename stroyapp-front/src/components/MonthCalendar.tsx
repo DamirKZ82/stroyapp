@@ -3,12 +3,22 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import type { CalendarDay } from '@/api/types';
 import { radius, text, type ThemeColors } from '@/theme';
 import { useColors, useThemedStyles } from '@/theme/scheme';
 import { formatDateHuman } from '@/utils/format';
 import { useLang } from '@/utils/lang';
 import { serverToday } from '@/utils/serverTime';
+
+/**
+ * Состояние дня. В StroyApp занятости с сервера нет — календарь служит
+ * простым выбором даты, но тип оставлен: компонент умеет красить дни.
+ */
+export interface CalendarDay {
+  date: string;
+  status: 'free' | 'pending' | 'confirmed' | 'past';
+  price: number | null;
+  is_weekend: boolean;
+}
 
 type DayStatus = CalendarDay['status'];
 

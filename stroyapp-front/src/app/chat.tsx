@@ -382,9 +382,9 @@ export default function ChatScreen() {
     );
   }
 
-  const { subject, hall, provider, booking } = details.chat;
+  const { subject, provider, booking } = details.chat;
   const subjectGuid = subject.guid;
-  const price = hall?.price_weekday ? hall.price_weekday : (provider?.price_from ?? null);
+  const price = provider?.price_from ?? null;
   const canSend = draft.trim().length > 0 && pending === null;
   // Отказ в отправке над полосой о блокировке не показываем: он говорит то же
   // самое, только словами сервера и всегда по-русски, — и когда переписку
@@ -397,11 +397,7 @@ export default function ChatScreen() {
     if (!subjectGuid) return;
     // fromChat — чтобы «Написать» на открытой карточке вернуло в этот чат,
     // а не положило поверх вторую его копию.
-    if (subject.type === 'provider') {
-      pushOnce({ pathname: '/provider', params: { providerGuid: subjectGuid, fromChat: chatGuid } });
-    } else {
-      pushOnce({ pathname: '/hall', params: { hallGuid: subjectGuid, fromChat: chatGuid } });
-    }
+    pushOnce({ pathname: '/provider', params: { providerGuid: subjectGuid, fromChat: chatGuid } });
   };
 
   const dismissMode = Platform.OS === 'ios' ? 'interactive' : 'on-drag';
@@ -541,7 +537,7 @@ export default function ChatScreen() {
               </Text>
               {price !== null ? (
                 <Text style={styles.subjectPrice} numberOfLines={1}>
-                  {t('hall.price_weekday_from', { price: formatPrice(price) })}
+                  {t('provider.price_from', { price: formatPrice(price) })}
                 </Text>
               ) : null}
               {booking ? (
@@ -557,7 +553,7 @@ export default function ChatScreen() {
                 </Text>
               ) : (
                 <Text style={styles.subjectGo} numberOfLines={1}>
-                  {subject.type === 'provider' ? t('messages.go_to_provider') : t('messages.go_to_hall')}
+                  {t('messages.go_to_provider')}
                 </Text>
               )}
             </View>

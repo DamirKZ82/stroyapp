@@ -22,7 +22,7 @@ import { LIST_CONTENT_FILL, Screen } from '@/components/Screen';
 import { space, text, type ThemeColors } from '@/theme';
 import { useColors, useThemedStyles } from '@/theme/scheme';
 import { bookingStatusTone } from '@/utils/bookingStatus';
-import { formatDateHuman, formatPrice } from '@/utils/format';
+import { formatDateHuman } from '@/utils/format';
 import { useLang } from '@/utils/lang';
 import { formatKzPhoneDisplay } from '@/utils/phone';
 import { pushOnce } from '@/utils/nav';
@@ -190,15 +190,16 @@ interface BookingCardProps {
 /**
  * Карточка входящей заявки.
  *
- * Заголовок — клиент, а не зал: у владельца с одним залом название зала
- * стояло бы в каждой карточке, и заявки различались бы только мелким текстом.
+ * Заголовок — клиент, а не объявление: у продавца с одним магазином его
+ * название стояло бы в каждой карточке, и заявки различались бы только
+ * мелким текстом. Что нужно — первой строкой комментария.
  */
 const BookingCard = memo(function BookingCard({ booking, onOpen }: BookingCardProps) {
   const { t } = useTranslation();
   const lang = useLang();
   const styles = useThemedStyles(makeStyles);
 
-  const subject = booking.subject.name ?? t('bookings.subject_deleted');
+  const subject = booking.provider?.name ?? t('bookings.subject_deleted');
   const name = booking.client?.name || null;
   const phone = booking.client?.phone ? formatKzPhoneDisplay(booking.client.phone) : null;
   // Имя клиент мог и не указать — тогда его представляет телефон, а если нет
@@ -225,16 +226,15 @@ const BookingCard = memo(function BookingCard({ booking, onOpen }: BookingCardPr
             {subject}
           </Text>
         ) : null}
-        <Text style={styles.meta} numberOfLines={1}>
-          {formatDateHuman(booking.event_date, lang)} ·{' '}
-          {t('filters.guests_count', { count: booking.guests_count })}
-        </Text>
+        {booking.comment ? (
+          <Text style={styles.what} numberOfLines={2}>
+            {booking.comment}
+          </Text>
+        ) : null}
         <View style={styles.foot}>
-          {booking.price_at_booking != null ? (
-            <Text style={styles.price} numberOfLines={1}>
-              {formatPrice(booking.price_at_booking)}
-            </Text>
-          ) : null}
+          <Text style={styles.meta} numberOfLines={1}>
+            {t('bookings.wanted_by', { date: formatDateHuman(booking.event_date, lang) })}
+          </Text>
           <View style={styles.status}>
             <Badge label={t(`bookings.status_${booking.status}`)} tone={bookingStatusTone(booking.status)} />
           </View>
@@ -263,7 +263,7 @@ const makeStyles = (colors: ThemeColors) =>
       rowGap: 4,
       marginTop: 4,
     },
-    price: { fontSize: text.body, fontWeight: '700', color: colors.primary },
+    what: { fontSize: text.body, color: colors.text },
     // Статус всегда справа — и когда цены нет, и когда он перенёсся на новую строку.
     status: { marginLeft: 'auto' },
   });

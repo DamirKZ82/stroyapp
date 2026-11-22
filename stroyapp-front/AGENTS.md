@@ -19,7 +19,7 @@ Expo SDK 57, React Native 0.86, expo-router, TypeScript 6. **Expo сильно
 src/app/                 экраны = файлы (expo-router)
   _layout.tsx            корень: тема, вход, стек
   (tabs)/                4 вкладки: index (поиск), favorites, messages, profile
-  hall.tsx, chat.tsx …   экраны над вкладками, плоско, kebab-case
+  provider.tsx, chat.tsx …  экраны над вкладками, плоско, kebab-case
   kit.tsx                витрина компонентов, только в разработке (__DEV__)
 src/components/          общие компоненты
 src/theme/               цвета, размеры, useColors / useThemedStyles
@@ -86,7 +86,7 @@ const makeStyles = (colors: ThemeColors) =>
 | `Loader`, `ErrorBanner`, `EmptyState`, `Badge` | загрузка, ошибка, пусто, статус |
 | `useAnnounce` | проговорить диктору появившийся текст (ошибку). `ErrorBanner` и `Field` с `error` делают это сами — второй раз тот же текст не объявлять: полоса у кнопки, повторяющая ошибку поля, — `<ErrorBanner announce={false} …>` |
 | `Sheet` | шторка снизу |
-| `MonthCalendar`, `CalendarLegend` | месяц с занятостью |
+| `MonthCalendar`, `CalendarLegend` | месяц для выбора даты (умеет красить дни по занятости, в StroyApp не используется) |
 | `StarRating` | звёзды |
 
 Отступы списка (`contentContainerStyle` у FlatList) — из `Screen.tsx`:
@@ -110,13 +110,13 @@ const makeStyles = (colors: ThemeColors) =>
 
 | Компонент | Что важно знать |
 | --- | --- |
-| `HallCard`, `ProviderCard` | карточки в списках. В поиске передавать `showAvailability={!!date}`: сервер для поиска без даты отдаёт `is_busy_on_date: false`, и без этого бейдж «свободно» был бы на каждой карточке. Отступов между карточками у них нет — их даёт `gap` списка |
-| `ListingCard` | общая основа `HallCard` и `ProviderCard`: получает готовые строки. Новая карточка в поиске — обёртка над ней, а не своя вёрстка |
-| `FavoriteHeart` | сердце «в избранное» в белом круге поверх фото. Ставить соседом фото или нажимаемой карточки, а не внутрь: иначе нажатие откроет объявление, а VoiceOver кнопку не найдёт. `inset={8}` в карточке списка, по умолчанию 12 — на экранах зала и исполнителя |
+| `ProviderCard` | карточка магазина или бригады в списках. Совпавшие с поиском позиции прайса (`matched_items`) показывает строками под ценой. Отступов между карточками нет — их даёт `gap` списка |
+| `ListingCard` | основа `ProviderCard`: получает готовые строки, `extraLines` — дополнительные строки под ценой. Новая карточка в поиске — обёртка над ней, а не своя вёрстка |
+| `FavoriteHeart` | сердце «в избранное» в белом круге поверх фото. Ставить соседом фото или нажимаемой карточки, а не внутрь: иначе нажатие откроет объявление, а VoiceOver кнопку не найдёт. `inset={8}` в карточке списка, по умолчанию 12 — на экране объявления |
 | `RatingInline`, `ratingLabel` | звезда, средняя оценка и число отзывов в строку; `ratingLabel` — то же словами для диктора. Внутри нажимаемой карточки со своей подписью — `accessible={false}` |
-| `ReviewList` | отзывы на карточке зала и исполнителя: `reviews={reviews?.items ?? []}`, подпись ответа и текст «пусто». С `onReport` у каждого отзыва появляется «Пожаловаться» |
+| `ReviewList` | отзывы на карточке объявления: `reviews={reviews?.items ?? []}`, подпись ответа и текст «пусто». С `onReport` у каждого отзыва появляется «Пожаловаться» |
 | `CategoryBar`, `FiltersBar` | полосы поиска. Отступ от краёв экрана у них внутри: в заголовке списка с `LIST_CONTENT` их оборачивают в `<View style={{ marginHorizontal: -space.page }}>` |
-| `CityPicker`, `GuestsPicker`, `DatePickerSheet`, `FiltersSheet` | шторки выбора. `DatePickerSheet` сообщает показанный месяц через `onMonthChange` (и при открытии тоже) — родитель догружает занятость этого месяца |
+| `CityPicker`, `DatePickerSheet`, `FiltersSheet` | шторки выбора. `FiltersSheet` — предел цены, сортировка и теги-признаки (`tags`) |
 | `PhotoGallery`, `PhotoViewer` | галерея берёт ширину родителя: для фото от края до края — `marginHorizontal: -space.page` |
 | `PhotoStrip` | лента фото в формах владельца; только показ, выбор и загрузка — в экране. Ключи должны быть уникальны, монтировать уже с загруженным списком |
 | `AuthGateSheet` | шторка входа, уже в корневом макете. Открывается через `useRequireAuth()` / `useAuthGateStore().open(reason)` |
@@ -149,13 +149,12 @@ const makeStyles = (colors: ThemeColors) =>
 
 ```tsx
 <Screen scroll footer={<Button label={t('common.save')} onPress={save} style={{ flex: 1 }} />}>
-  <Stack.Screen options={{ headerShown: true, title: t('owner.hall_form_new') }} />
+  <Stack.Screen options={{ headerShown: true, title: t('owner.provider_form_new') }} />
   ...
 </Screen>
 ```
 
-- Новый экран — строкой в `src/app/_layout.tsx`: каталог (`hall`,
-  `provider`) открыт гостю, личные экраны — внутри
+- Новый экран — строкой в `src/app/_layout.tsx`: каталог (`provider`) открыт гостю, личные экраны — внутри
   `<Stack.Protected guard={authed}>`.
 - Формы и карточки — `<Screen scroll>`; списки — `<Screen>` и свой
   `FlatList` с `LIST_CONTENT` / `LIST_CONTENT_FILL` (см. таблицу выше).
@@ -175,11 +174,11 @@ const makeStyles = (colors: ThemeColors) =>
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { pushOnce, useOnTop } from '@/utils/nav';
 
-pushOnce({ pathname: '/hall', params: { hallGuid } });
-const { hallGuid } = useLocalSearchParams<{ hallGuid: string }>();
+pushOnce({ pathname: '/provider', params: { providerGuid } });
+const { providerGuid } = useLocalSearchParams<{ providerGuid: string }>();
 router.back();
 router.dismissTo('/my-listings');   // назад к уже открытому экрану
-router.setParams({ hallGuid });     // форма «создать» стала «изменить»
+router.setParams({ providerGuid }); // форма «создать» стала «изменить»
 ```
 
 - Экран открывать только через `pushOnce`, не `router.push`: быстрый
@@ -200,29 +199,24 @@ router.setParams({ hallGuid });     // форма «создать» стала 
 | Экран | Путь | Параметры |
 | --- | --- | --- |
 | Поиск / Избранное / Сообщения / Профиль | `/`, `/favorites`, `/messages`, `/profile` | — |
-| Зал | `/hall` | `hallGuid`, `fromChat?` (guid чата, из которого открыли) |
-| Исполнитель | `/provider` | `providerGuid`, `fromChat?` |
-| Новая заявка | `/booking-form` | `hallGuid?` или `providerGuid?`, `initialDate?` (YYYY-MM-DD) |
+| Магазин / бригада | `/provider` | `providerGuid`, `fromChat?` (guid чата, из которого открыли) |
+| Новая заявка | `/booking-form` | `providerGuid`, `initialDate?` (YYYY-MM-DD), `initialComment?` (текст заявки, например позиция прайса) |
 | Чат | `/chat` | `chatGuid` |
 | Мои заявки | `/my-bookings` | — |
 | Отзыв | `/review-form` | `bookingGuid`, `subjectName?` |
-| Жалоба | `/report` | `targetType` (`hall` / `provider` / `review` / `chat`), `targetGuid`, `subjectName?` |
+| Жалоба | `/report` | `targetType` (`provider` / `review` / `chat`), `targetGuid`, `subjectName?` |
 | Заблокированные | `/blocked-users` | — |
 | Мои объявления | `/my-listings` | — |
-| Заведение | `/venue` | `venueGuid` |
-| Форма заведения | `/venue-form` | `venueGuid?` |
-| Форма зала | `/hall-form` | `venueGuid`, `hallGuid?` |
-| Календарь зала | `/hall-calendar` | `hallGuid`, `hallName` |
 | Входящие заявки | `/incoming-bookings` | — |
 | Заявка (владельцу) | `/booking` | `bookingGuid` |
-| Форма исполнителя | `/provider-form` | `providerGuid?`, `categoryId?` |
+| Форма объявления (с прайсом) | `/provider-form` | `providerGuid?`, `categoryId?` |
 
 Перейти на вкладку с экрана над вкладками — `router.dismissTo('/messages')`,
 а не `push` / `navigate`: те положат поверх вторую копию вкладок.
 
 ## Данные
 
-- Запросы — через `@/api` (`searchApi`, `hallsApi`, …), ошибки — `ApiError`,
+- Запросы — через `@/api` (`searchApi`, `providersApi`, …), ошибки — `ApiError`,
   текст ошибки: `e instanceof ApiError ? e.message : t('common.error_generic')`.
 - Загрузка — `useEffect` / `useFocusEffect` (из `expo-router`) + `useState`,
   как было. react-query не подключаем.
@@ -254,8 +248,7 @@ router.setParams({ hallGuid });     // форма «создать» стала 
 | --- | --- |
 | `alert.ts` | `confirmDestructive(title, message, onConfirm, label?)` — «Отмена» и красная кнопка; `showThen(title, message, onClose)` — «ОК», затем действие экрана. В вебе работают через `window.confirm` и сразу |
 | `bookingStatus.ts` | цвет бейджа статуса заявки; подпись — ``t(`bookings.status_${status}`)`` |
-| `capacity.ts` | `capacityLabel` — вместимость зала одной фразой |
-| `category.ts` | `isVenueCategory` — заведение с залами или исполнитель |
+| `category.ts` | `KINDS`, `KIND_KEY`, `KIND_ICON` — вид объявления: магазин материалов (`material`) или бригада (`service`) |
 | `cityCoords.ts` | координаты городов, ближайший город к GPS |
 | `coords.ts` | разбор координат в формах владельца, вставка пары из 2GIS |
 | `format.ts` | `formatPrice`, `formatDateHuman`, `monthOf`. «Сегодня» здесь нет намеренно — оно в `serverTime.ts` |
@@ -268,7 +261,7 @@ router.setParams({ hallGuid });     // форма «создать» стала 
 | `phone.ts` | казахстанские номера: приведение, показ, маска ввода |
 | `photo.ts` | `photoUrl` — полный адрес фото по пути с сервера |
 | `pickPhotos.ts` | выбор фото из галереи для форм владельца |
-| `priceUnit.ts` | `unitLabel` — «за час», «за персону» у исполнителя |
+| `priceUnit.ts` | единицы прайса: `UNITS`, `UNIT_KEY`, `unitName` («м²»), `unitLabel` («за м²») |
 | `push.ts` | регистрация push; в 1.0 не подключена |
 | `serverTime.ts` | `serverToday`, `serverStamp` — «сегодня» и «сейчас» по поясу сервера (UTC+5). Любое «сегодня», которое сравнивают с датами сервера (календарь, выбор даты, заявка, переписка), — только отсюда, не по часам телефона: иначе в другом поясе или около полуночи пропустим день, который сервер отклонит |
 | `useKeyboardShown.ts` | открыта ли клавиатура — для отступов под ней |
@@ -290,7 +283,7 @@ router.setParams({ hallGuid });     // форма «создать» стала 
 - Ключ пиши целиком, а не склеивай из кусков: такой находит поиск по
   проекту, а забытый вариант не соберётся. Набор вариантов — таблицей
   ключей, как `UNIT_KEY` в `@/utils/priceUnit`.
-- Число с существительным — `t('owner.halls_count', { count })` и формы
+- Число с существительным — `t('owner.items_count', { count })` и формы
   `_one`, `_few`, `_many`, `_other` **в обоих файлах**. В kz все четыре с
   одним текстом: код языка `kz` не из CLDR (казахский — `kk`), и правило
   множественного числа берётся по языку телефона — на русском телефоне

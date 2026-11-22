@@ -20,7 +20,7 @@ export interface ChipProps {
   label: string;
   /** Выбран: заливка фирменным цветом. */
   selected?: boolean;
-  /** Без onPress чип — просто метка (удобства зала, специализация). */
+  /** Без onPress чип — просто метка (признаки объявления). */
   onPress?: () => void;
   icon?: keyof typeof Icon.glyphMap;
   disabled?: boolean;

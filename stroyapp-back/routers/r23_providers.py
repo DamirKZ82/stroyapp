@@ -406,6 +406,13 @@ async def my_providers(user=Depends(auth_user)):
         ORDER BY provider_id, sort_order, id
     """)
     thumb_by_provider = {t['provider_id']: t['thumb_path'] for t in thumbs}
+    counts = await query_db(f"""
+        SELECT provider_id, COUNT(*)::int AS n
+        FROM provider_items
+        WHERE provider_id IN ({ids_sql})
+        GROUP BY provider_id
+    """)
+    count_by_provider = {c['provider_id']: c['n'] for c in counts}
 
     items = []
     for p in providers:
@@ -418,6 +425,7 @@ async def my_providers(user=Depends(auth_user)):
             'name_kz': p['category_name_kz'],
         }
         item['main_thumb'] = thumb_by_provider.get(p['id'])
+        item['items_count'] = count_by_provider.get(p['id'], 0)
         items.append(item)
     return {'items': items}
 

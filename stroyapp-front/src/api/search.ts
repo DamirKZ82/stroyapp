@@ -1,61 +1,61 @@
 import { apiClient } from './client';
-import type { ProviderSearchResponse, SearchResponse } from './types';
+import type { ItemSearchResponse, ListingKind, ProviderSearchResponse } from './types';
 
-export interface SearchParams {
+type Sort = 'rating_desc' | 'price_asc' | 'price_desc';
+
+export interface ProviderSearchParams {
+  /** Вид: магазины или бригады. Нужен, если не задана категория. */
+  kind?: ListingKind;
+  category_id?: number;
+  /** Текст: название, описание и позиции прайса. */
+  q?: string;
   city_id?: number;
-  date?: string;
-  guests?: number;
   price_max?: number;
-  amenity_ids?: number[];
-  sort?: 'rating_desc' | 'price_asc' | 'price_desc';
+  attr_ids?: number[];
+  sort?: Sort;
   page?: number;
   page_size?: number;
 }
 
-export interface ProviderSearchParams {
-  category_id: number;
+export interface ItemSearchParams {
+  q: string;
+  kind?: ListingKind;
+  category_id?: number;
   city_id?: number;
-  date?: string;
   price_max?: number;
-  attr_ids?: number[];
-  sort?: 'rating_desc' | 'price_asc' | 'price_desc';
+  sort?: Sort;
   page?: number;
   page_size?: number;
+}
+
+function toQuery(params: object): Record<string, string | number> {
+  const query: Record<string, string | number> = {};
+  for (const [key, val] of Object.entries(params)) {
+    if (val === undefined || val === null || val === '') continue;
+    if (Array.isArray(val)) {
+      if (val.length) query[key] = val.join(',');
+    } else {
+      query[key] = val as string | number;
+    }
+  }
+  return query;
 }
 
 export const searchApi = {
-  async halls(params: SearchParams): Promise<SearchResponse> {
-    const query: Record<string, string | number> = {};
-    if (params.city_id !== undefined) query.city_id = params.city_id;
-    if (params.date) query.date = params.date;
-    if (params.guests !== undefined) query.guests = params.guests;
-    if (params.price_max !== undefined) query.price_max = params.price_max;
-    if (params.amenity_ids && params.amenity_ids.length) {
-      query.amenity_ids = params.amenity_ids.join(',');
-    }
-    if (params.sort) query.sort = params.sort;
-    if (params.page !== undefined) query.page = params.page;
-    if (params.page_size !== undefined) query.page_size = params.page_size;
-
-    const { data } = await apiClient.get<SearchResponse>('/search/halls', { params: query });
+  /** Магазины и бригады. */
+  async providers(params: ProviderSearchParams): Promise<ProviderSearchResponse> {
+    const { data } = await apiClient.get<ProviderSearchResponse>(
+      '/search/providers',
+      { params: toQuery(params) },
+    );
     return data;
   },
 
-  async providers(params: ProviderSearchParams): Promise<ProviderSearchResponse> {
-    const query: Record<string, string | number> = { category_id: params.category_id };
-    if (params.city_id !== undefined) query.city_id = params.city_id;
-    if (params.date) query.date = params.date;
-    if (params.price_max !== undefined) query.price_max = params.price_max;
-    if (params.attr_ids && params.attr_ids.length) {
-      query.attr_ids = params.attr_ids.join(',');
-    }
-    if (params.sort) query.sort = params.sort;
-    if (params.page !== undefined) query.page = params.page;
-    if (params.page_size !== undefined) query.page_size = params.page_size;
-
-    const { data } = await apiClient.get<ProviderSearchResponse>(
-      '/search/providers',
-      { params: query },
+  /** Позиции прайса — сравнить цену товара или работы. */
+  async items(params: ItemSearchParams): Promise<ItemSearchResponse> {
+    const { data } = await apiClient.get<ItemSearchResponse>(
+      '/search/items',
+      { params: toQuery(params) },
     );
     return data;
   },

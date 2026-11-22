@@ -1,31 +1,20 @@
 import { useTranslation } from 'react-i18next';
 
 import type { City } from '@/api/types';
-import { formatDateHuman } from '@/utils/format';
 import { dictName } from '@/utils/i18nDict';
 import { useLang } from '@/utils/lang';
 import { ChipRow, TouchChip } from './Chip';
 
 export interface FiltersBarValue {
   city: City | null;
-  /** YYYY-MM-DD. */
-  date: string | null;
-  guests: number | null;
   priceMax: number | null;
-  amenityCount: number;
+  tagCount: number;
 }
 
 interface FiltersBarProps {
   value: FiltersBarValue;
   onCityPress: () => void;
-  onDatePress: () => void;
-  onGuestsPress: () => void;
   onExtraFilters: () => void;
-  /**
-   * Показывать ли чип «Гости». У исполнителей такого фильтра нет: чип
-   * открывал шторку, а введённое число никуда не шло.
-   */
-  showGuests?: boolean;
 }
 
 /**
@@ -35,7 +24,7 @@ interface FiltersBarProps {
 const CHIP_MAX_WIDTH = 240;
 
 /**
- * Ряд фильтров поиска: город, дата, гости и «остальное».
+ * Ряд фильтров поиска: город и «остальное» (цена, условия, сортировка).
  *
  * Сам ничего не выбирает — по нажатию экран открывает свою шторку. Чип
  * залит, когда фильтр задан, так что сброшенный поиск виден с одного
@@ -49,17 +38,14 @@ const CHIP_MAX_WIDTH = 240;
 export function FiltersBar({
   value,
   onCityPress,
-  onDatePress,
-  onGuestsPress,
   onExtraFilters,
-  showGuests = true,
 }: FiltersBarProps) {
   const { t } = useTranslation();
   const lang = useLang();
 
-  // Цена считается за один фильтр, удобства — каждое отдельно: число на чипе
+  // Цена считается за один фильтр, условия — каждое отдельно: число на чипе
   // совпадает с тем, сколько полей человек тронул в шторке.
-  const extraCount = value.amenityCount + (value.priceMax ? 1 : 0);
+  const extraCount = value.tagCount + (value.priceMax ? 1 : 0);
 
   return (
     <ChipRow bleed={false}>
@@ -70,22 +56,6 @@ export function FiltersBar({
         onPress={onCityPress}
         maxWidth={CHIP_MAX_WIDTH}
       />
-      <TouchChip
-        icon="calendar"
-        label={value.date ? formatDateHuman(value.date, lang) : t('filters.date')}
-        selected={!!value.date}
-        onPress={onDatePress}
-        maxWidth={CHIP_MAX_WIDTH}
-      />
-      {showGuests ? (
-        <TouchChip
-          icon="account-group-outline"
-          label={value.guests ? t('filters.guests_count', { count: value.guests }) : t('filters.guests')}
-          selected={!!value.guests}
-          onPress={onGuestsPress}
-          maxWidth={CHIP_MAX_WIDTH}
-        />
-      ) : null}
       <TouchChip
         icon="tune-variant"
         label={extraCount > 0 ? t('filters.title_count', { count: extraCount }) : t('filters.title')}

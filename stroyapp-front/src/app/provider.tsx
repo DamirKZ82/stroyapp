@@ -4,9 +4,9 @@ import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react
 import { useTranslation } from 'react-i18next';
 
 import { ApiError, chatsApi, providersApi, reviewsApi } from '@/api';
-import type { PublicProviderDetails, Review, ReviewsResponse } from '@/api/types';
+import type { PriceItem, PublicProviderDetails, Review, ReviewsResponse } from '@/api/types';
 import { Button } from '@/components/Button';
-import { Card, SectionLabel } from '@/components/Card';
+import { Card, Row, RowGroup, SectionLabel } from '@/components/Card';
 import { Chip, ChipWrap } from '@/components/Chip';
 import { FavoriteHeart } from '@/components/FavoriteHeart';
 import { ErrorBanner, Loader } from '@/components/Feedback';
@@ -26,8 +26,12 @@ import { formatKzPhoneDisplay } from '@/utils/phone';
 import { pushOnce, useOnTop } from '@/utils/nav';
 import { unitLabel } from '@/utils/priceUnit';
 
+/** Столько позиций прайса видно сразу, остальные — по кнопке. */
+const ITEMS_PREVIEW = 15;
+
 /**
- * Карточка исполнителя (ведущий, фотограф, …) — то, что видит клиент.
+ * Карточка магазина или бригады — то, что видит клиент: прайс, описание,
+ * контакты, отзывы.
  *
  * Прокрутка своя, а не <Screen scroll>: у того отступы по краям, а фото
  * здесь идут от края до края экрана.
@@ -49,6 +53,7 @@ export default function ProviderScreen() {
   // из профиля) — и карточка перезапрашивалась бы с вертушкой прямо под ней.
   const [failure, setFailure] = useState<{ message: string | null } | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
+  const [allItems, setAllItems] = useState(false);
 
   const isFav = useFavoritesStore((s) => (providerGuid ? s.guids.has(providerGuid) : false));
   const toggleProviderFav = useFavoritesStore((s) => s.toggleProvider);
@@ -139,7 +144,7 @@ export default function ProviderScreen() {
   const guid = provider.guid;
 
   // !isFav берём в момент нажатия, а не после входа: гость нажал пустое
-  // сердце, чтобы добавить, — и после входа исполнитель должен добавиться,
+  // сердце, чтобы добавить, — и после входа объявление должно добавиться,
   // даже если избранное аккаунта к этому мигу уже подгрузилось.
   const toggleFavorite = () =>
     requireAuth('favorite', () => {
@@ -170,9 +175,13 @@ export default function ProviderScreen() {
       }
     });
 
-  const book = () =>
+  // С позиции прайса — заявка уже с её названием: остаётся дописать количество.
+  const book = (item?: PriceItem) =>
     requireAuth('book', () => {
-      pushOnce({ pathname: '/booking-form', params: { providerGuid: guid } });
+      pushOnce({
+        pathname: '/booking-form',
+        params: item ? { providerGuid: guid, initialComment: `${item.name} — ` } : { providerGuid: guid },
+      });
     });
 
   // Жалоба — только от вошедшего: у неё должен быть автор. Название идёт
@@ -192,7 +201,18 @@ export default function ProviderScreen() {
       });
     });
 
-  const unit = unitLabel(t, provider.price_unit);
+  // «Цена от» — как в поиске: самая дешёвая позиция прайса, а без прайса —
+  // цена, которую продавец указал сам. Иначе карточка с ценами в прайсе
+  // писала бы «Цена договорная», а поиск — «от 120 ₸».
+  const cheapest = provider.items.reduce<PriceItem | null>(
+    (best, it) => (it.price != null && (best?.price == null || it.price < best.price) ? it : best),
+    null,
+  );
+  const priceFrom = cheapest?.price ?? provider.price_from;
+  const unit = unitLabel(t, cheapest ? cheapest.unit : provider.price_unit);
+  // Длинный прайс целиком растянул бы карточку на десятки экранов: сначала
+  // начало, остальное по кнопке.
+  const shownItems = allItems ? provider.items : provider.items.slice(0, ITEMS_PREVIEW);
   const { phone, latitude, longitude } = provider;
   // Проверка на истинность, а не на null: ноль тоже считаем «координат
   // нет» — точки 0,0 в Казахстане не бывает, а маршрут в океан не нужен.
@@ -203,13 +223,13 @@ export default function ProviderScreen() {
       footer={
         <>
           <Button
-            label={t('hall.chat_button')}
+            label={t('listing.chat_button')}
             variant="outline"
             busy={chatBusy}
             onPress={openChat}
             style={styles.chatButton}
           />
-          <Button label={t('hall.book_button')} onPress={book} style={styles.bookButton} />
+          <Button label={t('listing.book_button')} onPress={() => book()} style={styles.bookButton} />
         </>
       }
     >
@@ -243,6 +263,11 @@ export default function ProviderScreen() {
             <Text style={styles.sub}>
               {`${dictName(provider.category, lang)} · ${dictName(provider.city, lang)}`}
             </Text>
+            {provider.address ? (
+              <Text style={styles.sub} selectable>
+                {provider.address}
+              </Text>
+            ) : null}
             {reviews && reviews.reviews_count > 0 ? (
               <RatingInline
                 avg={reviews.avg_rating}
@@ -253,9 +278,9 @@ export default function ProviderScreen() {
           </View>
 
           <Card style={styles.priceCard}>
-            {provider.price_from != null ? (
+            {priceFrom != null ? (
               <>
-                <Text style={styles.price}>{formatPrice(provider.price_from)}</Text>
+                <Text style={styles.price}>{formatPrice(priceFrom)}</Text>
                 {/* «от» стоит под ценой, а не перед ней: в казахском оно идёт
                     после числа («50 000 ₸ бастап»), и одной строкой на оба
                     языка это не склеить. */}
@@ -270,9 +295,43 @@ export default function ProviderScreen() {
             )}
           </Card>
 
+          {provider.items.length > 0 ? (
+            <View style={styles.section}>
+              <SectionLabel>{t('provider.items_label')}</SectionLabel>
+              <RowGroup>
+                {shownItems.map((item, index) => {
+                  const price =
+                    item.price != null
+                      ? [formatPrice(item.price), unitLabel(t, item.unit)].filter(Boolean).join(' ')
+                      : t('provider.price_negotiable');
+                  return (
+                    <Row
+                      key={item.guid ?? `${index}`}
+                      first={index === 0}
+                      title={item.name}
+                      value={price}
+                      // Нажатие — заявка с этой позицией: так быстрее, чем
+                      // переписывать название руками.
+                      onPress={() => book(item)}
+                      accessibilityLabel={`${item.name}, ${price}`}
+                    />
+                  );
+                })}
+              </RowGroup>
+              {provider.items.length > shownItems.length ? (
+                <Button
+                  label={t('provider.items_show_all', { count: provider.items.length })}
+                  variant="text"
+                  small
+                  onPress={() => setAllItems(true)}
+                />
+              ) : null}
+            </View>
+          ) : null}
+
           {provider.description ? (
             <View style={styles.section}>
-              <SectionLabel>{t('hall.description')}</SectionLabel>
+              <SectionLabel>{t('listing.description')}</SectionLabel>
               <Card>
                 <Text style={styles.paragraph}>{provider.description}</Text>
               </Card>
@@ -306,7 +365,7 @@ export default function ProviderScreen() {
               ) : null}
               {coords ? (
                 <Button
-                  label={t('hall.open_in_2gis')}
+                  label={t('listing.open_in_2gis')}
                   variant="outline"
                   icon="map"
                   accessibilityRole="link"
@@ -317,11 +376,11 @@ export default function ProviderScreen() {
           ) : null}
 
           <View style={styles.section}>
-            <SectionLabel>{t('hall.reviews')}</SectionLabel>
+            <SectionLabel>{t('listing.reviews')}</SectionLabel>
             <ReviewList
               reviews={reviews?.items ?? []}
               replyLabel={t('provider.owner_reply_label')}
-              emptyText={t('hall.no_reviews')}
+              emptyText={t('listing.no_reviews')}
               onReport={reportReview}
             />
           </View>

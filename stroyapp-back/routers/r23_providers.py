@@ -1,11 +1,11 @@
 """
-Исполнители (providers) — тамада, артисты, декораторы, кейтеринг, фото-видео.
+Объявления (providers): магазин стройматериалов или бригада / мастер.
+Вид объявления задаёт категория (categories.kind).
 
-Плоская сущность (в отличие от venues → halls): одна карточка = один исполнитель.
-«Своя модель у категории» выражена через атрибуты (provider_attr_types) и
-price_unit (за мероприятие / час / персону / день).
+Признаки (доставка, договор, гарантия…) — provider_attr_types, прайс —
+provider_items: позиции с единицей измерения (libs/units.py) и ценой.
 
-    GET    /providers/my                  — мои исполнители (кратко + превью)
+    GET    /providers/my                  — мои объявления (кратко + превью)
     POST   /providers                     — создать
     GET    /providers/{guid}              — детали (с фото и атрибутами) — владельцу
     PATCH  /providers/{guid}              — обновить
@@ -14,13 +14,15 @@ price_unit (за мероприятие / час / персону / день).
     POST   /providers/{guid}/photos       — загрузить пачку фото (multipart: files[])
     DELETE /providers/photos/{photo_id}   — удалить одно фото
     PATCH  /providers/{guid}/photos/order — переупорядочить фото
+
+    PUT    /providers/{guid}/items        — заменить прайс целиком
 """
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, field_validator
 
-from connections.connect_postgres import query_db
+from connections.connect_postgres import query_db, transaction
 from handlers.h01_errors import WarnException
 from handlers.h03_auth import auth_user
 from libs.common import fit_to_sql, new_guid
@@ -28,13 +30,17 @@ from libs.date import get_timestamp_now
 from libs.ownership import require_provider_owner
 from libs.photos import save_provider_photo, delete_photo_files
 from libs.text_filter import Clean
+from libs.units import UNIT_CODES
 from services.moderation import publish_sql, refuse_publish_if_hidden
 
 
 router = APIRouter(prefix='/providers')
 
 
-PRICE_UNITS = {'event', 'hour', 'person', 'day'}
+PRICE_UNITS = UNIT_CODES
+
+# Позиций в прайсе одного объявления не больше.
+ITEMS_LIMIT = 500
 
 
 # -------------------------------------------------------------------------
@@ -48,11 +54,22 @@ class ProviderCreateBody(BaseModel):
     description: Optional[Clean] = None
     # Clean: в поле телефона помещается двадцать любых знаков.
     phone: Optional[Clean] = None
+    address: Optional[Clean] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     price_from: Optional[int] = None
     price_unit: Optional[str] = None
     attr_ids: List[int] = []
+
+    @field_validator('address')
+    @classmethod
+    def address_ok(cls, val):
+        if val is None:
+            return None
+        val = val.strip()
+        if len(val) > 500:
+            raise ValueError('Адрес не должен быть длиннее 500 символов')
+        return val or None
 
     @field_validator('name')
     @classmethod
@@ -131,12 +148,23 @@ class ProviderPatchBody(BaseModel):
     description: Optional[Clean] = None
     # Clean: в поле телефона помещается двадцать любых знаков.
     phone: Optional[Clean] = None
+    address: Optional[Clean] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     price_from: Optional[int] = None
     price_unit: Optional[str] = None
     attr_ids: Optional[List[int]] = None
     is_active: Optional[bool] = None
+
+    @field_validator('address')
+    @classmethod
+    def address_ok(cls, val):
+        if val is None:
+            return None
+        val = val.strip()
+        if len(val) > 500:
+            raise ValueError('Адрес не должен быть длиннее 500 символов')
+        return val
 
     @field_validator('name')
     @classmethod
@@ -206,6 +234,50 @@ class ProviderPatchBody(BaseModel):
         return val
 
 
+class PriceItemBody(BaseModel):
+    name: Clean
+    unit: str
+    price: Optional[int] = None
+
+    @field_validator('name')
+    @classmethod
+    def name_ok(cls, val):
+        val = ' '.join((val or '').split())
+        if not val:
+            raise ValueError('Название позиции не может быть пустым')
+        if len(val) > 200:
+            raise ValueError('Название позиции не должно быть длиннее 200 символов')
+        return val
+
+    @field_validator('unit')
+    @classmethod
+    def unit_ok(cls, val):
+        val = (val or '').strip()
+        if val not in UNIT_CODES:
+            raise ValueError(f'unit должен быть одним из: {sorted(UNIT_CODES)}')
+        return val
+
+    @field_validator('price')
+    @classmethod
+    def price_ok(cls, val):
+        if val is None:
+            return None
+        if val < 0 or val > 1_000_000_000:
+            raise ValueError('Некорректная цена')
+        return val
+
+
+class PriceItemsBody(BaseModel):
+    items: List[PriceItemBody]
+
+    @field_validator('items')
+    @classmethod
+    def not_too_many(cls, val):
+        if len(val) > ITEMS_LIMIT:
+            raise ValueError(f'В прайсе не больше {ITEMS_LIMIT} позиций')
+        return val
+
+
 class PhotoOrderBody(BaseModel):
     photo_ids: List[int]
 
@@ -232,7 +304,7 @@ async def _city_exists(city_id: int) -> bool:
 
 
 async def _validate_attrs(attr_ids: List[int], category_id: int) -> None:
-    """Атрибуты должны существовать И принадлежать категории исполнителя."""
+    """Атрибуты должны существовать И принадлежать категории объявления."""
     if not attr_ids:
         return
     ids_sql = ', '.join(str(int(i)) for i in attr_ids)
@@ -275,6 +347,15 @@ async def _provider_attrs(provider_id: int) -> List[dict]:
     """)
 
 
+async def _provider_items(provider_id: int) -> List[dict]:
+    return await query_db(f"""
+        SELECT guid, name, unit, price, sort_order
+        FROM provider_items
+        WHERE provider_id = {fit_to_sql(provider_id)}
+        ORDER BY sort_order, id
+    """)
+
+
 def _provider_public(row: dict) -> dict:
     return {
         'id': row['id'],
@@ -284,6 +365,7 @@ def _provider_public(row: dict) -> dict:
         'name': row['name'],
         'description': row['description'],
         'phone': row['phone'],
+        'address': row['address'],
         'latitude': float(row['latitude']) if row['latitude'] is not None else None,
         'longitude': float(row['longitude']) if row['longitude'] is not None else None,
         'price_from': row['price_from'],
@@ -302,9 +384,9 @@ def _provider_public(row: dict) -> dict:
 async def my_providers(user=Depends(auth_user)):
     providers = await query_db(f"""
         SELECT p.id, p.guid, p.category_id, p.city_id, p.name, p.description,
-               p.phone, p.latitude, p.longitude, p.price_from, p.price_unit,
+               p.phone, p.address, p.latitude, p.longitude, p.price_from, p.price_unit,
                p.is_active, p.created_at, p.updated_at,
-               cat.code AS category_code,
+               cat.code AS category_code, cat.kind AS category_kind,
                cat.name_ru AS category_name_ru,
                cat.name_kz AS category_name_kz
         FROM providers p
@@ -324,6 +406,13 @@ async def my_providers(user=Depends(auth_user)):
         ORDER BY provider_id, sort_order, id
     """)
     thumb_by_provider = {t['provider_id']: t['thumb_path'] for t in thumbs}
+    counts = await query_db(f"""
+        SELECT provider_id, COUNT(*)::int AS n
+        FROM provider_items
+        WHERE provider_id IN ({ids_sql})
+        GROUP BY provider_id
+    """)
+    count_by_provider = {c['provider_id']: c['n'] for c in counts}
 
     items = []
     for p in providers:
@@ -331,10 +420,12 @@ async def my_providers(user=Depends(auth_user)):
         item['category'] = {
             'id': p['category_id'],
             'code': p['category_code'],
+            'kind': p['category_kind'],
             'name_ru': p['category_name_ru'],
             'name_kz': p['category_name_kz'],
         }
         item['main_thumb'] = thumb_by_provider.get(p['id'])
+        item['items_count'] = count_by_provider.get(p['id'], 0)
         items.append(item)
     return {'items': items}
 
@@ -352,7 +443,7 @@ async def create_provider(body: ProviderCreateBody, user=Depends(auth_user)):
     rows = await query_db(f"""
         INSERT INTO providers (
             guid, owner_id, category_id, city_id, name, description,
-            phone, latitude, longitude, price_from, price_unit,
+            phone, address, latitude, longitude, price_from, price_unit,
             is_active, created_at, updated_at
         )
         VALUES (
@@ -363,6 +454,7 @@ async def create_provider(body: ProviderCreateBody, user=Depends(auth_user)):
             {fit_to_sql(body.name)},
             {fit_to_sql(body.description)},
             {fit_to_sql(body.phone)},
+            {fit_to_sql(body.address)},
             {fit_to_sql(body.latitude)},
             {fit_to_sql(body.longitude)},
             {fit_to_sql(body.price_from)},
@@ -372,7 +464,7 @@ async def create_provider(body: ProviderCreateBody, user=Depends(auth_user)):
             {fit_to_sql(now)}
         )
         RETURNING id, guid, category_id, city_id, name, description,
-                  phone, latitude, longitude, price_from, price_unit,
+                  phone, address, latitude, longitude, price_from, price_unit,
                   is_active, created_at, updated_at
     """)
     provider = rows[0]
@@ -381,6 +473,7 @@ async def create_provider(body: ProviderCreateBody, user=Depends(auth_user)):
     result = _provider_public(provider)
     result['attrs'] = await _provider_attrs(provider['id'])
     result['photos'] = []
+    result['items'] = []
     return {'provider': result}
 
 
@@ -390,6 +483,7 @@ async def get_provider(guid: str, user=Depends(auth_user)):
     result = _provider_public(provider)
     result['photos'] = await _provider_photos(provider['id'])
     result['attrs'] = await _provider_attrs(provider['id'])
+    result['items'] = await _provider_items(provider['id'])
     return {'provider': result}
 
 
@@ -417,6 +511,8 @@ async def patch_provider(guid: str, body: ProviderPatchBody, user=Depends(auth_u
         updates.append(f"description = {fit_to_sql(body.description)}")
     if body.phone is not None:
         updates.append(f"phone = {fit_to_sql(body.phone)}")
+    if body.address is not None:
+        updates.append(f"address = {fit_to_sql(body.address or None)}")
     if body.latitude is not None:
         updates.append(f"latitude = {fit_to_sql(body.latitude)}")
     if body.longitude is not None:
@@ -445,13 +541,14 @@ async def patch_provider(guid: str, body: ProviderPatchBody, user=Depends(auth_u
 
     fresh = await query_db(f"""
         SELECT id, guid, category_id, city_id, name, description,
-               phone, latitude, longitude, price_from, price_unit,
+               phone, address, latitude, longitude, price_from, price_unit,
                is_active, created_at, updated_at
         FROM providers WHERE id = {fit_to_sql(provider['id'])}
     """)
     result = _provider_public(fresh[0])
     result['photos'] = await _provider_photos(provider['id'])
     result['attrs'] = await _provider_attrs(provider['id'])
+    result['items'] = await _provider_items(provider['id'])
     return {'provider': result}
 
 
@@ -569,3 +666,36 @@ async def reorder_photos(guid: str, body: PhotoOrderBody, user=Depends(auth_user
 
     photos = await _provider_photos(provider['id'])
     return {'items': photos}
+
+
+# -------------------------------------------------------------------------
+# Роуты — прайс
+# -------------------------------------------------------------------------
+
+@router.put('/{guid}/items')
+async def replace_items(guid: str, body: PriceItemsBody, user=Depends(auth_user)):
+    """
+    Прайс сохраняется целиком: приложение редактирует список у себя и
+    присылает его весь. Порядок в списке — порядок показа.
+    """
+    provider = await require_provider_owner(guid, user)
+    now = get_timestamp_now()
+    async with transaction() as tx:
+        await tx.query(f"DELETE FROM provider_items WHERE provider_id = {fit_to_sql(provider['id'])}")
+        if body.items:
+            values = ',\n'.join(
+                f"({fit_to_sql(new_guid())}, {fit_to_sql(provider['id'])}, {fit_to_sql(it.name)}, "
+                f"{fit_to_sql(it.unit)}, {fit_to_sql(it.price)}, {fit_to_sql(order)}, "
+                f"{fit_to_sql(now)}, {fit_to_sql(now)})"
+                for order, it in enumerate(body.items)
+            )
+            await tx.query(f"""
+                INSERT INTO provider_items
+                    (guid, provider_id, name, unit, price, sort_order, created_at, updated_at)
+                VALUES {values}
+            """)
+        await tx.query(f"""
+            UPDATE providers SET updated_at = {fit_to_sql(now)}
+            WHERE id = {fit_to_sql(provider['id'])}
+        """)
+    return {'items': await _provider_items(provider['id'])}

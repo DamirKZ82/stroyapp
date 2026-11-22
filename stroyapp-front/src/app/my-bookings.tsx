@@ -25,7 +25,7 @@ import { space, text, type ThemeColors } from '@/theme';
 import { useColors, useThemedStyles } from '@/theme/scheme';
 import { confirmDestructive } from '@/utils/alert';
 import { bookingStatusTone } from '@/utils/bookingStatus';
-import { formatDateHuman, formatPrice } from '@/utils/format';
+import { formatDateHuman } from '@/utils/format';
 import { useLang } from '@/utils/lang';
 import { pushOnce, useOnTop } from '@/utils/nav';
 import { serverToday } from '@/utils/serverTime';
@@ -106,7 +106,7 @@ export default function MyBookingsScreen() {
   }, [load]);
 
   // Единственное место загрузки: срабатывает при открытии, при возврате на
-  // экран (после отзыва, из карточки зала) и при смене фильтра — load тогда
+  // экран (после отзыва, из карточки объявления) и при смене фильтра — load тогда
   // новый. Отдельный useEffect рядом слал бы второй запрос при открытии.
   useFocusEffect(
     useCallback(() => {
@@ -281,32 +281,27 @@ const BookingCard = memo(function BookingCard({
   const styles = useThemedStyles(makeStyles);
   const colors = useColors();
 
-  const { subject } = booking;
-  // Заявка переживает свой зал: у удалённого сервер ставит deleted и не
-  // отдаёт guid. Имя проверяем отдельно — оно может не прийти и без флага.
-  const subjectGuid = subject.deleted ? null : subject.guid;
-  const subjectName = subject.deleted || !subject.name ? null : subject.name;
+  const subject = booking.provider;
+  const deleted = booking.provider_deleted || !subject;
+  // Заявка переживает своё объявление: у удалённого сервер ставит
+  // provider_deleted и не отдаёт guid. Имя проверяем отдельно.
+  const subjectGuid = deleted ? null : (subject?.guid ?? null);
+  const subjectName = deleted || !subject?.name ? null : subject.name;
 
   const canCancel = booking.status === 'pending' || booking.status === 'confirmed';
-  // Отзыв — только о состоявшемся событии (иначе сервер его отклонит) и
-  // только пока зал или исполнитель существует: отзыв об удалённом никто
-  // не увидит.
-  const canReview =
-    booking.status === 'confirmed' && booking.event_date < today && !subject.deleted;
+  // Отзыв — с наступлением срока заявки (раньше сервер его отклонит) и
+  // только пока объявление существует: отзыв об удалённом никто не увидит.
+  const canReview = booking.status === 'confirmed' && booking.event_date <= today && !deleted;
 
   const openSubject = () => {
     if (!subjectGuid) return;
-    if (subject.type === 'provider') {
-      pushOnce({ pathname: '/provider', params: { providerGuid: subjectGuid } });
-    } else {
-      pushOnce({ pathname: '/hall', params: { hallGuid: subjectGuid } });
-    }
+    pushOnce({ pathname: '/provider', params: { providerGuid: subjectGuid } });
   };
 
   const openReview = () =>
     pushOnce({
       pathname: '/review-form',
-      params: { bookingGuid: booking.guid, subjectName: subject.name ?? '' },
+      params: { bookingGuid: booking.guid, subjectName: subjectName ?? '' },
     });
 
   const summary = (
@@ -314,15 +309,14 @@ const BookingCard = memo(function BookingCard({
       <Text style={[styles.name, !subjectName && styles.nameGone]} numberOfLines={1}>
         {subjectName ?? t('bookings.subject_deleted')}
       </Text>
-      <Text style={styles.meta} numberOfLines={1}>
-        {formatDateHuman(booking.event_date, lang)} ·{' '}
-        {t('filters.guests_count', { count: booking.guests_count })}
-      </Text>
-      {booking.price_at_booking != null ? (
-        <Text style={styles.price} numberOfLines={1}>
-          {formatPrice(booking.price_at_booking)}
+      {booking.comment ? (
+        <Text style={styles.what} numberOfLines={2}>
+          {booking.comment}
         </Text>
       ) : null}
+      <Text style={styles.meta} numberOfLines={1}>
+        {t('bookings.wanted_by', { date: formatDateHuman(booking.event_date, lang) })}
+      </Text>
     </View>
   );
 
@@ -396,7 +390,7 @@ const makeStyles = (colors: ThemeColors) =>
     name: { fontSize: text.subtitle, fontWeight: '600', color: colors.text },
     nameGone: { color: colors.muted },
     meta: { fontSize: text.caption, color: colors.muted },
-    price: { fontSize: text.body, fontWeight: '600', color: colors.primary },
+    what: { fontSize: text.body, color: colors.text },
     reason: { fontSize: text.caption, color: colors.muted },
     // Перенос — на случай узкого экрана и крупного шрифта: две кнопки с
     // казахскими подписями в одну строку могут не поместиться.

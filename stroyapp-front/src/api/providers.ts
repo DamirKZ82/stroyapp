@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 import type {
-  CalendarResponse, CategoryBrief, City, HallPhoto, PriceUnit,
+  CategoryBrief, City, Photo, PriceItem, PriceUnit,
   ProviderAttr, PublicProviderDetails,
 } from './types';
 
@@ -13,6 +13,7 @@ export interface ProviderBody {
   name: string;
   description?: string | null;
   phone?: string | null;
+  address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   price_from?: number | null;
@@ -30,6 +31,7 @@ export interface OwnerProviderFull {
   name: string;
   description: string | null;
   phone: string | null;
+  address: string | null;
   latitude: number | null;
   longitude: number | null;
   price_from: number | null;
@@ -37,13 +39,16 @@ export interface OwnerProviderFull {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  photos: HallPhoto[];
+  photos: Photo[];
   attrs: ProviderAttr[];
+  items: PriceItem[];
 }
 
-export interface MyProvider extends OwnerProviderFull {
+export interface MyProvider extends Omit<OwnerProviderFull, 'photos' | 'attrs' | 'items'> {
   category: CategoryBrief;
   main_thumb: string | null;
+  /** Позиций в прайсе. */
+  items_count: number;
 }
 
 export interface UploadedPhoto {
@@ -53,7 +58,7 @@ export interface UploadedPhoto {
   sort_order: number;
 }
 
-/** Owner CRUD исполнителя + публичные детали/календарь (для карточки). */
+/** CRUD объявления владельцем + публичные детали для карточки. */
 export const providersApi = {
   async my(): Promise<{ items: MyProvider[] }> {
     const { data } = await apiClient.get<{ items: MyProvider[] }>('/providers/my');
@@ -106,27 +111,27 @@ export const providersApi = {
     return data;
   },
 
-  async reorderPhotos(providerGuid: string, photoIds: number[]): Promise<{ items: HallPhoto[] }> {
-    const { data } = await apiClient.patch<{ items: HallPhoto[] }>(
+  async reorderPhotos(providerGuid: string, photoIds: number[]): Promise<{ items: Photo[] }> {
+    const { data } = await apiClient.patch<{ items: Photo[] }>(
       `/providers/${providerGuid}/photos/order`,
       { photo_ids: photoIds },
     );
     return data;
   },
 
-  /** Публичные детали исполнителя (карточка C07). */
-  async getPublic(guid: string): Promise<{ provider: PublicProviderDetails & { city: City } }> {
-    const { data } = await apiClient.get<{ provider: PublicProviderDetails & { city: City } }>(
-      `/search/providers/${guid}`,
+  /** Заменить прайс целиком: порядок в списке — порядок показа. */
+  async saveItems(guid: string, items: PriceItem[]): Promise<{ items: PriceItem[] }> {
+    const { data } = await apiClient.put<{ items: PriceItem[] }>(
+      `/providers/${guid}/items`,
+      { items: items.map(({ name, unit, price }) => ({ name, unit, price })) },
     );
     return data;
   },
 
-  /** Календарь занятости исполнителя (требует JWT). */
-  async calendar(guid: string, month: string): Promise<CalendarResponse> {
-    const { data } = await apiClient.get<CalendarResponse>(
-      `/providers/${guid}/calendar`,
-      { params: { month } },
+  /** Публичные детали объявления (карточка магазина или бригады). */
+  async getPublic(guid: string): Promise<{ provider: PublicProviderDetails & { city: City } }> {
+    const { data } = await apiClient.get<{ provider: PublicProviderDetails & { city: City } }>(
+      `/search/providers/${guid}`,
     );
     return data;
   },

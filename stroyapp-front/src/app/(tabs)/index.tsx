@@ -15,36 +15,39 @@ import { useTranslation } from 'react-i18next';
 
 import { ApiError, dictsApi, searchApi } from '@/api';
 import type {
-  Amenity,
   Category,
   City,
-  HallCardData,
+  ItemSearchRow,
+  ListingKind,
   ProviderAttrType,
   ProviderCardData,
 } from '@/api/types';
 import { Button } from '@/components/Button';
 import { CategoryBar } from '@/components/CategoryBar';
 import { CityPicker } from '@/components/CityPicker';
-import { DatePickerSheet } from '@/components/DatePickerSheet';
 import { EmptyState, ErrorBanner, Loader } from '@/components/Feedback';
+import { Input } from '@/components/Field';
 import { FiltersBar, type FiltersBarValue } from '@/components/FiltersBar';
 import { FiltersSheet, type FiltersValue, type SortOption } from '@/components/FiltersSheet';
-import { GuestsPicker } from '@/components/GuestsPicker';
-import { HallCard } from '@/components/HallCard';
 import { ProviderCard } from '@/components/ProviderCard';
+import { RatingInline } from '@/components/RatingInline';
 import { Screen, ScreenTitle, TAB_LIST_CONTENT } from '@/components/Screen';
+import { Segment } from '@/components/Segment';
+import { Thumb } from '@/components/Thumb';
 import { useAuthStore } from '@/store/authStore';
 import { useFavoritesStore } from '@/store/favoritesStore';
 import { secureDelete, secureGet, secureSet } from '@/store/secureStorage';
 import { useIsAuthed, useRequireAuth } from '@/store/useRequireAuth';
 import { radius, space, text, type ThemeColors } from '@/theme';
 import { useColors, useThemedStyles } from '@/theme/scheme';
-import { isVenueCategory } from '@/utils/category';
+import { KIND_KEY, KINDS } from '@/utils/category';
 import { findNearestCity } from '@/utils/cityCoords';
+import { formatPrice } from '@/utils/format';
 import { dictName } from '@/utils/i18nDict';
 import { useLang } from '@/utils/lang';
 import { pushOnce } from '@/utils/nav';
 import { intOrNull } from '@/utils/number';
+import { unitLabel } from '@/utils/priceUnit';
 
 const PAGE_SIZE = 20;
 // Ключ остался от прежнего названия приложения. Переименовать — значит
@@ -73,19 +76,29 @@ const GEO_GRACE_MS = 1500;
 const DEFAULT_SORT: SortOption = 'rating_desc';
 
 type CitySource = 'user' | 'geo' | 'none';
-type Row = HallCardData | ProviderCardData;
+/** Объявления целиком или отдельные позиции прайсов — для сравнения цен. */
+type Mode = 'listings' | 'items';
+type Row = ProviderCardData | ItemSearchRow;
 type IconName = keyof typeof Icon.glyphMap;
 
-const isHall = (row: Row): row is HallCardData => 'hall' in row;
-const guidOf = (row: Row) => (isHall(row) ? row.hall.guid : row.provider.guid);
+/** Короче сервер текст не ищет: по одной букве совпало бы всё подряд. */
+const QUERY_MIN = 2;
+/** Пауза после набора, прежде чем искать: не слать запрос на каждую букву. */
+const QUERY_DEBOUNCE_MS = 400;
+
+const isItemRow = (row: Row): row is ItemSearchRow => 'item' in row;
+const guidOf = (row: Row) => (isItemRow(row) ? row.item.guid : row.provider.guid);
 
 /**
- * Главная вкладка: поиск залов и исполнителей.
+ * Главная вкладка: поиск стройматериалов (магазины) и строительных бригад.
  *
- * Весь экран — один список: приветствие, категории и фильтры лежат в его
- * заголовке. Так список остаётся единственной прокруткой экрана, и системная
- * панель вкладок сворачивается при прокрутке, а нажатие на вкладку
- * возвращает наверх — с отдельной шапкой над списком система этого не умеет.
+ * Весь экран — один список: приветствие, вид, строка поиска, категории и
+ * фильтры лежат в его заголовке. Так список остаётся единственной прокруткой
+ * экрана, и системная панель вкладок сворачивается при прокрутке, а нажатие
+ * на вкладку возвращает наверх.
+ *
+ * С текстом поиска можно переключиться на «Сравнить цены»: тогда в списке
+ * не объявления, а совпавшие позиции прайсов всех магазинов, дешёвые сверху.
  */
 export default function SearchScreen() {
   const { t } = useTranslation();
@@ -97,41 +110,41 @@ export default function SearchScreen() {
   const authed = useIsAuthed();
   const userName = useAuthStore((s) => (authed ? (s.user?.full_name ?? null) : null));
 
+  const [kind, setKind] = useState<ListingKind>('material');
   const [categories, setCategories] = useState<Category[]>([]);
+  // null — все категории выбранного вида.
   const [category, setCategory] = useState<Category | null>(null);
-  // Категории нет (сервер без /dicts/categories или не было сети) — экран
-  // работает как раньше: поиск залов.
-  const providerCategory = category && !isVenueCategory(category) ? category : null;
-  const isRestaurant = !providerCategory;
-  const providerCategoryId = providerCategory?.id ?? null;
-  const providerCategoryCode = providerCategory?.code ?? null;
+  const categoryId = category?.id ?? null;
+  const categoryCode = category?.code ?? null;
+  const kindCategories = categories.filter((c) => c.kind === kind);
+
+  // draft — то, что в поле сейчас; query — что уже ушло в поиск.
+  const [draft, setDraft] = useState('');
+  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<Mode>('listings');
+  const canCompare = query.length >= QUERY_MIN;
+  // Без текста сравнивать нечего: режим остаётся выбранным, но не действует,
+  // и вернётся сам, когда человек снова что-то наберёт.
+  const effectiveMode: Mode = canCompare ? mode : 'listings';
 
   const [cities, setCities] = useState<City[]>([]);
-  const [amenities, setAmenities] = useState<Amenity[]>([]);
   const [attrTypes, setAttrTypes] = useState<ProviderAttrType[]>([]);
 
   const [city, setCity] = useState<City | null>(null);
   const [citySource, setCitySource] = useState<CitySource>('none');
   const [showNoCityBanner, setShowNoCityBanner] = useState(false);
   // Состояние, а не ref: поиск ждёт, пока город определится, и должен
-  // запуститься, когда это случится. Ref перерисовки не вызывает — без
-  // города (геолокация запрещена или человек вне Казахстана) поиск не
-  // стартовал бы вовсе.
+  // запуститься, когда это случится.
   const [citySettled, setCitySettled] = useState(false);
 
-  const [date, setDate] = useState<string | null>(null);
-  const [guests, setGuests] = useState<number | null>(null);
   const [priceMax, setPriceMax] = useState<number | null>(null);
   const [tagIds, setTagIds] = useState<number[]>([]);
   const [sort, setSort] = useState<SortOption>(DEFAULT_SORT);
 
   const [cityOpen, setCityOpen] = useState(false);
-  const [dateOpen, setDateOpen] = useState(false);
-  const [guestsOpen, setGuestsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const [hallItems, setHallItems] = useState<HallCardData[]>([]);
-  const [provItems, setProvItems] = useState<ProviderCardData[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -145,12 +158,11 @@ export default function SearchScreen() {
   const [error, setError] = useState<{ message: string | null } | null>(null);
 
   const favGuids = useFavoritesStore((s) => s.guids);
-  const toggleFav = useFavoritesStore((s) => s.toggle);
-  const toggleProviderFav = useFavoritesStore((s) => s.toggleProvider);
+  const toggleFav = useFavoritesStore((s) => s.toggleProvider);
   const requireAuth = useRequireAuth();
 
   // Номер последнего запроса. Ответы приходят не по порядку: без сверки
-  // медленный ответ по прошлой категории затирал бы счётчик и страницы новой.
+  // медленный ответ по прошлому фильтру затирал бы счётчик и страницы нового.
   const requestSeq = useRef(0);
   const listRef = useRef<FlatList<Row>>(null);
   // Следующая страница не загрузилась. Вертушка внизу меняет высоту списка,
@@ -162,17 +174,12 @@ export default function SearchScreen() {
   // уже после этого — и не должна затирать его выбор.
   const cityTouched = useRef(false);
 
-  // Категории грузим отдельно от остальных справочников: если их нет, экран
-  // всё равно остаётся поиском залов, а не пустым.
   const loadCategories = useCallback(async () => {
     try {
       const { items } = await dictsApi.categories();
-      if (items.length === 0) return;
       setCategories(items);
-      // Уже выбранную не трогаем: загрузка может быть повторной.
-      setCategory((current) => current ?? items.find((x) => isVenueCategory(x)) ?? items[0]);
     } catch {
-      // Остаёмся без категорий — category = null, ищем залы.
+      // Без категорий поиск всё равно работает — по виду целиком.
     }
   }, []);
 
@@ -180,12 +187,8 @@ export default function SearchScreen() {
     if (citiesBusy.current) return;
     citiesBusy.current = true;
     try {
-      const [citiesResp, amenitiesResp] = await Promise.all([
-        dictsApi.cities(),
-        dictsApi.amenities(),
-      ]);
+      const citiesResp = await dictsApi.cities();
       setCities(citiesResp.items);
-      setAmenities(amenitiesResp.items);
 
       // Город, выбранный руками, важнее геолокации: её тогда и не спрашиваем.
       const savedRaw = await secureGet(SAVED_CITY_KEY);
@@ -223,21 +226,27 @@ export default function SearchScreen() {
 
   useEffect(() => {
     void (async () => {
-      // По очереди, а не разом: первый поиск должен знать и категорию, и город.
-      await loadCategories();
-      await loadCities();
+      await Promise.all([loadCategories(), loadCities()]);
       setCitySettled(true);
     })();
   }, [loadCategories, loadCities]);
 
-  // Атрибуты исполнителя — свои у каждой категории, кроме ресторанов.
+  // Текст уходит в поиск после паузы в наборе.
+  useEffect(() => {
+    const next = draft.trim();
+    if (next === query) return;
+    const timer = setTimeout(() => setQuery(next), QUERY_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [draft, query]);
+
+  // Атрибуты («доставка», «гарантия»…) свои у каждого вида и категории.
   useEffect(() => {
     // Сразу чистим: иначе в фильтрах до ответа висели бы теги прошлой категории.
     setAttrTypes([]);
-    if (!providerCategoryCode) return;
+    if (!categoryCode) return;
     let stale = false;
     dictsApi
-      .providerAttrTypes(providerCategoryCode)
+      .providerAttrTypes(categoryCode)
       .then((resp) => {
         if (!stale) setAttrTypes(resp.items);
       })
@@ -247,11 +256,8 @@ export default function SearchScreen() {
     return () => {
       stale = true;
     };
-  }, [providerCategoryCode]);
+  }, [categoryCode]);
 
-  // Гости — фильтр только залов. Для исполнителей число в запрос не идёт,
-  // поэтому и перезапускать их поиск из-за него незачем.
-  const hallGuests = isRestaurant ? guests : null;
   const cityId = city?.id;
 
   const doSearch = useCallback(
@@ -263,36 +269,28 @@ export default function SearchScreen() {
       setError(null);
       try {
         const common = {
+          kind,
+          category_id: categoryId ?? undefined,
           city_id: cityId,
-          date: date ?? undefined,
           price_max: priceMax ?? undefined,
           sort,
           page: pageToLoad,
           page_size: PAGE_SIZE,
         };
-        if (providerCategoryId !== null) {
-          const resp = await searchApi.providers({
-            ...common,
-            category_id: providerCategoryId,
-            attr_ids: tagIds.length ? tagIds : undefined,
-          });
-          if (seq !== requestSeq.current) return;
-          setProvItems((prev) => (replace ? resp.items : appendNew(prev, resp.items)));
-          setTotal(resp.total);
-          setPage(resp.page);
-          setHasMore(resp.page * resp.page_size < resp.total);
-        } else {
-          const resp = await searchApi.halls({
-            ...common,
-            guests: hallGuests ?? undefined,
-            amenity_ids: tagIds.length ? tagIds : undefined,
-          });
-          if (seq !== requestSeq.current) return;
-          setHallItems((prev) => (replace ? resp.items : appendNew(prev, resp.items)));
-          setTotal(resp.total);
-          setPage(resp.page);
-          setHasMore(resp.page * resp.page_size < resp.total);
-        }
+        const resp =
+          effectiveMode === 'items'
+            ? await searchApi.items({ ...common, q: query })
+            : await searchApi.providers({
+                ...common,
+                q: query || undefined,
+                attr_ids: tagIds.length ? tagIds : undefined,
+              });
+        if (seq !== requestSeq.current) return;
+        const next: Row[] = resp.items;
+        setRows((prev) => (replace ? next : appendNew(prev, next)));
+        setTotal(resp.total);
+        setPage(resp.page);
+        setHasMore(resp.page * resp.page_size < resp.total);
         moreFailed.current = false;
       } catch (e) {
         if (seq !== requestSeq.current) return;
@@ -308,7 +306,7 @@ export default function SearchScreen() {
         }
       }
     },
-    [providerCategoryId, cityId, date, hallGuests, priceMax, tagIds, sort],
+    [kind, categoryId, cityId, priceMax, sort, effectiveMode, query, tagIds],
   );
 
   // Любая смена фильтра меняет doSearch — и поиск начинается с первой страницы.
@@ -370,90 +368,95 @@ export default function SearchScreen() {
     secureDelete(SAVED_CITY_KEY).catch(() => {});
   };
 
-  const onSelectCategory = (next: Category) => {
-    if (next.id === category?.id) return;
-    // Ответ по прежней категории, если он ещё в пути, больше не нужен: успей
+  /** Новая выдача вместо старой: чистим список и показываем вертушку. */
+  const resetResults = () => {
+    // Ответ по прежнему фильтру, если он ещё в пути, больше не нужен: успей
     // он до нового запроса — лёг бы в только что очищенный список.
     requestSeq.current += 1;
-    setCategory(next);
-    // Список один на все категории и не пересоздаётся, поэтому наверх
-    // возвращаем его сами: на iOS положение прокрутки не всегда поправляется,
-    // когда содержимое стало короче, и список остался бы сдвинутым.
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
-    setHallItems([]);
-    setProvItems([]);
+    setRows([]);
     setTotal(0);
     setPage(1);
     setHasMore(false);
-    // У другой категории свои теги, цены и смысл сортировки — фильтры,
-    // кроме города и даты, начинаются заново.
-    setPriceMax(null);
-    setTagIds([]);
-    setGuests(null);
-    setSort(DEFAULT_SORT);
     // Поиск стартует в эффекте, кадром позже: без этого между очисткой списка
     // и вертушкой мелькнуло бы «ничего не найдено».
     setLoading(true);
   };
 
+  const onSelectKind = (next: ListingKind) => {
+    if (next === kind) return;
+    resetResults();
+    setKind(next);
+    setCategory(null);
+    // Теги у магазинов и бригад разные, а цены несравнимы.
+    setPriceMax(null);
+    setTagIds([]);
+  };
+
+  // Повторное нажатие на выбранную категорию снимает её — снова весь вид.
+  const onSelectCategory = (next: Category) => {
+    resetResults();
+    setCategory((current) => (current?.id === next.id ? null : next));
+    setTagIds([]);
+  };
+
+  const onSelectMode = (next: Mode) => {
+    if (next === mode) return;
+    resetResults();
+    setMode(next);
+    // Сравнивают цены — значит, дешёвые сверху; объявления — лучшие сверху.
+    setSort(next === 'items' ? 'price_asc' : DEFAULT_SORT);
+  };
+
+  // «Найти» на клавиатуре — искать сразу, не дожидаясь паузы.
+  const onSubmitQuery = () => setQuery(draft.trim());
+
   const onApplyFilters = (value: FiltersValue) => {
     setPriceMax(value.priceMax);
     // Шторка каждый раз отдаёт новый массив. Тот же набор тегов оставляем
     // прежним массивом, иначе «Применить» без изменений перезапускал бы поиск.
-    setTagIds((prev) => (sameIds(prev, value.amenityIds) ? prev : value.amenityIds));
+    setTagIds((prev) => (sameIds(prev, value.tagIds) ? prev : value.tagIds));
     setSort(value.sort);
   };
 
-  const rows: Row[] = isRestaurant ? hallItems : provItems;
-  const showAvailability = !!date;
-
   const renderItem: ListRenderItem<Row> = useCallback(
     ({ item }) => {
+      if (isItemRow(item)) {
+        return (
+          <ItemRow
+            row={item}
+            onPress={() =>
+              pushOnce({ pathname: '/provider', params: { providerGuid: item.provider.guid } })
+            }
+          />
+        );
+      }
       // Состояние избранного для действия читаем в момент нажатия, а не из
       // замыкания: после входа через шторку действие выполняется позже, когда
       // избранное вошедшего уже могло загрузиться.
       const nowFav = (guid: string) => useFavoritesStore.getState().isFav(guid);
-      if (isHall(item)) {
-        const guid = item.hall.guid;
-        return (
-          <HallCard
-            item={item}
-            isFavorite={favGuids.has(guid)}
-            showAvailability={showAvailability}
-            onToggleFavorite={() => requireAuth('favorite', () => void toggleFav(guid, !nowFav(guid)))}
-            onPress={() => pushOnce({ pathname: '/hall', params: { hallGuid: guid } })}
-          />
-        );
-      }
       const guid = item.provider.guid;
       return (
         <ProviderCard
           item={item}
           isFavorite={favGuids.has(guid)}
-          showAvailability={showAvailability}
-          onToggleFavorite={() =>
-            requireAuth('favorite', () => void toggleProviderFav(guid, !nowFav(guid)))
-          }
+          onToggleFavorite={() => requireAuth('favorite', () => void toggleFav(guid, !nowFav(guid)))}
           onPress={() => pushOnce({ pathname: '/provider', params: { providerGuid: guid } })}
         />
       );
     },
-    [favGuids, showAvailability, requireAuth, toggleFav, toggleProviderFav],
+    [favGuids, requireAuth, toggleFav],
   );
 
   const keyExtractor = useCallback((row: Row) => guidOf(row), []);
 
   const filtersValue: FiltersBarValue = {
     city,
-    date,
-    guests: hallGuests,
     priceMax,
-    amenityCount: tagIds.length,
+    tagCount: tagIds.length,
   };
 
   const firstName = userName?.trim().split(/\s+/)[0] || null;
-  // Точка на кнопке — про то, что задано в шторке фильтров (цена и теги):
-  // дата и гости и так видны залитыми чипами в ряду ниже.
   const hasExtraFilters = !!priceMax || tagIds.length > 0;
   // При обновлении жестом вертушку показывает сам список — вторая ни к чему.
   const firstLoad = loading && !refreshing && rows.length === 0;
@@ -478,24 +481,47 @@ export default function SearchScreen() {
         }
       />
 
+      <Segment
+        value={kind}
+        options={KINDS.map((k) => ({ value: k, label: t(KIND_KEY[k]) }))}
+        onChange={onSelectKind}
+      />
+
+      <Input
+        value={draft}
+        onChangeText={setDraft}
+        onSubmitEditing={onSubmitQuery}
+        placeholder={
+          kind === 'material' ? t('search.query_placeholder_material') : t('search.query_placeholder_service')
+        }
+        accessibilityLabel={t('search.query_label')}
+        returnKeyType="search"
+        autoCorrect={false}
+        clearButtonMode="while-editing"
+      />
+
+      {canCompare ? (
+        <Segment
+          value={mode}
+          options={[
+            { value: 'listings', label: kind === 'material' ? t('search.mode_shops') : t('search.mode_crews') },
+            { value: 'items', label: t('search.mode_compare') },
+          ]}
+          onChange={onSelectMode}
+        />
+      ) : null}
+
       {/* Без категорий ряда нет, а пустая обёртка всё равно забрала бы зазор. */}
-      {categories.length > 0 ? (
+      {kindCategories.length > 0 ? (
         <View style={styles.bleed}>
-          <CategoryBar
-            categories={categories}
-            selectedId={category?.id ?? null}
-            onSelect={onSelectCategory}
-          />
+          <CategoryBar categories={kindCategories} selectedId={categoryId} onSelect={onSelectCategory} />
         </View>
       ) : null}
       <View style={styles.bleed}>
         <FiltersBar
           value={filtersValue}
           onCityPress={() => setCityOpen(true)}
-          onDatePress={() => setDateOpen(true)}
-          onGuestsPress={() => setGuestsOpen(true)}
           onExtraFilters={() => setFiltersOpen(true)}
-          showGuests={isRestaurant}
         />
       </View>
 
@@ -527,20 +553,18 @@ export default function SearchScreen() {
   return (
     <Screen tab>
       <FlatList
-        // Ключа «залы / исполнители» у списка нет намеренно. С ним список
-        // пересоздавался бы вместе с заголовком, а в заголовке — ряд
-        // категорий: он терял прокрутку вбок, и после выбора плитки за краем
-        // экрана ряд отскакивал к началу, пряча выбранную. Пересоздавать и
-        // нечего: при смене категории строки очищаются, а ключи строк — guid.
+        // Ключа у списка нет намеренно: с ним список пересоздавался бы вместе
+        // с заголовком, и поле поиска теряло бы фокус посреди набора.
         ref={listRef}
         data={rows}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         contentContainerStyle={TAB_LIST_CONTENT}
         ListHeaderComponent={header}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         // Поиск не удался — «ничего не найдено» было бы неправдой, а жест
-        // «потянуть» на пустом экране не очевиден: нужна кнопка. Повтор без
-        // refreshing — на месте кнопки встаёт вертушка первой загрузки.
+        // «потянуть» на пустом экране не очевиден: нужна кнопка.
         ListEmptyComponent={
           firstLoad ? (
             <View style={styles.firstLoad}>
@@ -576,27 +600,52 @@ export default function SearchScreen() {
         onClear={onClearCity}
         onClose={() => setCityOpen(false)}
       />
-      <DatePickerSheet
-        visible={dateOpen}
-        value={date}
-        onChange={setDate}
-        onClose={() => setDateOpen(false)}
-      />
-      <GuestsPicker
-        visible={guestsOpen}
-        value={guests}
-        onChange={setGuests}
-        onClose={() => setGuestsOpen(false)}
-      />
       <FiltersSheet
         visible={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        amenities={isRestaurant ? amenities : attrTypes}
-        amenitiesLabel={isRestaurant ? undefined : t('provider.attrs_label')}
-        value={{ priceMax, amenityIds: tagIds, sort }}
+        // В сравнении цен теги не действуют: сервер ищет по позициям.
+        tags={effectiveMode === 'items' ? [] : attrTypes}
+        tagsLabel={t('provider.attrs_label')}
+        value={{ priceMax, tagIds: tagIds, sort }}
         onApply={onApplyFilters}
       />
     </Screen>
+  );
+}
+
+/** Позиция прайса в сравнении цен: что, почём, у кого. */
+function ItemRow({ row, onPress }: { row: ItemSearchRow; onPress: () => void }) {
+  const { t } = useTranslation();
+  const styles = useThemedStyles(makeStyles);
+  const lang = useLang();
+  const price =
+    row.item.price !== null
+      ? [formatPrice(row.item.price), unitLabel(t, row.item.unit)].filter(Boolean).join(' ')
+      : t('provider.price_negotiable');
+  const where = [row.provider.name, dictName(row.city, lang)].join(' · ');
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${row.item.name}, ${price}, ${where}`}
+      style={({ pressed }) => [styles.itemRow, pressed && styles.dim]}
+    >
+      <Thumb path={row.main_thumb} size={56} icon="storefront-outline" />
+      <View style={styles.itemBody}>
+        <Text style={styles.itemName} numberOfLines={2}>
+          {row.item.name}
+        </Text>
+        <Text style={styles.itemWhere} numberOfLines={1}>
+          {where}
+        </Text>
+        {row.rating.count > 0 ? (
+          <RatingInline avg={row.rating.avg} count={row.rating.count} accessible={false} />
+        ) : null}
+      </View>
+      <Text style={styles.itemPrice} numberOfLines={2}>
+        {price}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -751,4 +800,23 @@ const makeStyles = (colors: ThemeColors) =>
     count: { fontSize: text.caption, color: colors.muted },
     firstLoad: { flexGrow: 1, minHeight: 160, justifyContent: 'center' },
     more: { paddingVertical: 12 },
+    itemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.gap,
+      padding: 12,
+      borderRadius: radius.card,
+      backgroundColor: colors.card,
+    },
+    itemBody: { flex: 1, minWidth: 0, gap: 2 },
+    itemName: { fontSize: text.body, fontWeight: '600', color: colors.text },
+    itemWhere: { fontSize: text.caption, color: colors.muted },
+    itemPrice: {
+      flexShrink: 0,
+      maxWidth: 130,
+      textAlign: 'right',
+      fontSize: text.body,
+      fontWeight: '700',
+      color: colors.text,
+    },
   });

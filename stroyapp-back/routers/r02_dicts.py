@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query
 
 from connections.connect_postgres import query_db
 from libs.common import fit_to_sql
+from libs.units import UNITS
 
 
 router = APIRouter(prefix='/dicts')
@@ -25,30 +26,19 @@ async def get_cities():
     return {'items': rows}
 
 
-@router.get('/amenities')
-async def get_amenities():
-    rows = await query_db("""
-        SELECT id, code, name_ru, name_kz, icon
-        FROM hall_amenities
-        ORDER BY id
-    """)
-    return {'items': rows}
-
-
-@router.get('/event-types')
-async def get_event_types():
-    rows = await query_db("""
-        SELECT id, code, name_ru, name_kz
-        FROM event_types
-        ORDER BY id
-    """)
-    return {'items': rows}
+@router.get('/units')
+async def get_units():
+    """Единицы измерения для прайса: код и подписи на двух языках."""
+    return {'items': [
+        {'code': code, 'name_ru': ru, 'name_kz': kz} for code, ru, kz in UNITS
+    ]}
 
 
 @router.get('/categories')
 async def get_categories():
+    """Категории обоих видов: kind = 'material' (магазины) | 'service' (бригады)."""
     rows = await query_db("""
-        SELECT id, code, name_ru, name_kz, icon, sort_order
+        SELECT id, code, kind, name_ru, name_kz, icon, sort_order
         FROM categories
         ORDER BY sort_order, id
     """)
@@ -57,9 +47,9 @@ async def get_categories():
 
 @router.get('/provider-attr-types')
 async def get_provider_attr_types(
-    category: Optional[str] = Query(None, description='Код категории, напр. "artist"'),
+    category: Optional[str] = Query(None, description='Код категории, напр. "bricks"'),
 ):
-    """Атрибуты исполнителей. Если задан category — только его атрибуты."""
+    """Признаки объявлений. Если задан category — только его атрибуты."""
     where = ''
     if category:
         where = f"WHERE c.code = {fit_to_sql(category)}"
@@ -70,15 +60,5 @@ async def get_provider_attr_types(
         JOIN categories c ON c.id = pat.category_id
         {where}
         ORDER BY pat.category_id, pat.sort_order, pat.id
-    """)
-    return {'items': rows}
-
-
-@router.get('/holidays')
-async def get_holidays():
-    rows = await query_db("""
-        SELECT date, name_ru, name_kz
-        FROM holidays
-        ORDER BY date
     """)
     return {'items': rows}

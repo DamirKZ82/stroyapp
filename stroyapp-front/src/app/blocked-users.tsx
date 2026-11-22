@@ -136,7 +136,7 @@ export default function BlockedUsersScreen() {
     ({ item }) => {
       const name = item.name || t('peer_block.no_name');
       // Объявление — потому что владельца знают по нему, а не по личному
-      // имени. Его может не быть: зал удалили вместе с перепиской.
+      // имени. Его может не быть: объявление удалили вместе с перепиской.
       const meta = [
         item.subject_name,
         t('peer_block.since', { date: formatDateHuman(item.created_at.slice(0, 10), lang) }),

@@ -1,12 +1,11 @@
 """
 Удаление пользователя вместе со всем, что с ним связано.
 
-Нужно в трёх местах: человек удаляет свой аккаунт из приложения
-(DELETE /profile), админ удаляет аккаунт из админки и scripts.seed_demo
-убирает демо-объявления.
+Нужно в двух местах: человек удаляет свой аккаунт из приложения
+(DELETE /profile) и админ удаляет аккаунт из админки.
 
-Каскадов в базе для этого не хватает: заявки, отзывы, чаты и избранное
-исполнителей не удаляются вместе с объявлением, а объявления и чёрные списки
+Каскадов в базе для этого не хватает: заявки и отзывы не удаляются вместе
+с объявлением, а объявления и чёрные списки
 собеседников — вместе с пользователем. Поэтому порядок удаления задан здесь
 явно и идёт в одной транзакции: либо исчезает всё, либо ничего.
 """
@@ -27,11 +26,8 @@ def _col(rows, key='id'):
 
 
 async def owned_scope(user_ids: list):
-    """(V, H, P): заведения, залы и исполнители этих пользователей."""
-    venues = _col(await query_db(f"SELECT id FROM venues WHERE owner_id = ANY({_ids(user_ids)})"))
-    halls = _col(await query_db(f"SELECT id FROM halls WHERE venue_id = ANY({_ids(venues)})"))
-    providers = _col(await query_db(f"SELECT id FROM providers WHERE owner_id = ANY({_ids(user_ids)})"))
-    return venues, halls, providers
+    """Объявления этих пользователей."""
+    return _col(await query_db(f"SELECT id FROM providers WHERE owner_id = ANY({_ids(user_ids)})"))
 
 
 async def purge_users(user_ids: list, keep_login: bool = False) -> dict:
@@ -50,8 +46,8 @@ async def purge_users(user_ids: list, keep_login: bool = False) -> dict:
     user_ids = [int(i) for i in user_ids]
     if not user_ids:
         return {}
-    venues, halls, providers = await owned_scope(user_ids)
-    u, v, h, p = _ids(user_ids), _ids(venues), _ids(halls), _ids(providers)
+    providers = await owned_scope(user_ids)
+    u, p = _ids(user_ids), _ids(providers)
 
     async def delete(tx, table, where):
         rows = await tx.query(f"WITH d AS (DELETE FROM {table} WHERE {where} RETURNING 1) "
@@ -60,23 +56,21 @@ async def purge_users(user_ids: list, keep_login: bool = False) -> dict:
 
     async with transaction() as tx:
         bookings = _col(await tx.query(
-            f"SELECT id FROM bookings WHERE hall_id = ANY({h}) OR provider_id = ANY({p}) OR client_id = ANY({u})"))
+            f"SELECT id FROM bookings WHERE provider_id = ANY({p}) OR client_id = ANY({u})"))
         b = _ids(bookings)
-        # Порядок важен: у reviews/bookings/chats(provider)/favorites(provider)
-        # нет ON DELETE CASCADE, иначе DELETE залов и исполнителей упадёт.
+        # Порядок важен: у reviews/bookings нет ON DELETE CASCADE,
+        # иначе DELETE объявлений упадёт.
         stats = {
             'reviews': await delete(tx, 'reviews',
-                f"hall_id = ANY({h}) OR provider_id = ANY({p}) OR booking_id = ANY({b}) OR client_id = ANY({u})"),
+                f"provider_id = ANY({p}) OR booking_id = ANY({b}) OR client_id = ANY({u})"),
             'chats': await delete(tx, 'chats',   # сообщения удаляются каскадом
-                f"hall_id = ANY({h}) OR provider_id = ANY({p}) OR owner_id = ANY({u}) OR client_id = ANY({u})"),
+                f"provider_id = ANY({p}) OR owner_id = ANY({u}) OR client_id = ANY({u})"),
         }
         await delete(tx, 'chat_messages', f"sender_id = ANY({u})")
         stats['bookings'] = await delete(tx, 'bookings', f"id = ANY({b})")
         stats['favorites'] = await delete(tx, 'favorites',
-            f"hall_id = ANY({h}) OR provider_id = ANY({p}) OR user_id = ANY({u})")
-        stats['providers'] = await delete(tx, 'providers', f"id = ANY({p})")   # фото и атрибуты — каскадом
-        stats['venues'] = await delete(tx, 'venues', f"id = ANY({v})")         # залы, фото, удобства — каскадом
-        stats['halls'] = len(halls)
+            f"provider_id = ANY({p}) OR user_id = ANY({u})")
+        stats['providers'] = await delete(tx, 'providers', f"id = ANY({p})")   # фото, признаки, прайс — каскадом
         # Журналы ошибок и предупреждений остаются для диагностики, но уже
         # без привязки к человеку: внешних ключей у них нет, обнуляем сами.
         for table in ('errors_back', 'errors_front', 'warns'):
@@ -127,8 +121,7 @@ async def purge_users(user_ids: list, keep_login: bool = False) -> dict:
     # Файлы — только после коммита: при откате фото остались бы у живых строк.
     # id из SERIAL не переиспользуются, так что папки принадлежат только удалённым.
     root = _uploads_root()
-    for kind, ids in (('halls', halls), ('providers', providers)):
-        for i in ids:
-            shutil.rmtree(root / kind / str(i), ignore_errors=True)
+    for i in providers:
+        shutil.rmtree(root / 'providers' / str(i), ignore_errors=True)
 
     return stats

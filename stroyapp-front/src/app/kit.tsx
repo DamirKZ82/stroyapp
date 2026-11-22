@@ -50,13 +50,13 @@ export default function KitScreen() {
 
       <Card title="Поля">
         <Field label="Название" hint="Как увидят клиенты">
-          <Input placeholder="Например: Большой зал" />
+          <Input placeholder="Например: Цемент М500" />
         </Field>
         <Field label="Цена, ₸" error="Укажите цену">
           <Input placeholder="500000" keyboardType="number-pad" invalid />
         </Field>
         <Field label="Описание">
-          <Input placeholder="Что важно знать гостям" multiline />
+          <Input placeholder="Что важно знать клиенту" multiline />
         </Field>
         <Field label="Город">
           <SelectField placeholder="Выберите город" value={null} onPress={() => setSheet(true)} />
@@ -139,7 +139,7 @@ export default function KitScreen() {
         <StarRating value={stars} onChange={setStars} />
         <EmptyState
           title="Пока нет заявок"
-          subtitle="Найдите зал и подайте заявку"
+          subtitle="Найдите магазин и подайте заявку"
           action={<Button label="Найти зал" variant="outline" onPress={() => {}} />}
         />
       </Card>

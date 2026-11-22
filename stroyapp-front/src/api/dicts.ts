@@ -1,7 +1,5 @@
 import { apiClient } from './client';
-import type {
-  Amenity, Category, City, EventType, Holiday, ProviderAttrType,
-} from './types';
+import type { Category, City, ProviderAttrType, Unit } from './types';
 
 export const dictsApi = {
   async categories(): Promise<{ items: Category[] }> {
@@ -18,16 +16,8 @@ export const dictsApi = {
     const { data } = await apiClient.get('/dicts/cities');
     return data;
   },
-  async amenities(): Promise<{ items: Amenity[] }> {
-    const { data } = await apiClient.get('/dicts/amenities');
-    return data;
-  },
-  async eventTypes(): Promise<{ items: EventType[] }> {
-    const { data } = await apiClient.get('/dicts/event-types');
-    return data;
-  },
-  async holidays(): Promise<{ items: Holiday[] }> {
-    const { data } = await apiClient.get('/dicts/holidays');
+  async units(): Promise<{ items: Unit[] }> {
+    const { data } = await apiClient.get('/dicts/units');
     return data;
   },
 };

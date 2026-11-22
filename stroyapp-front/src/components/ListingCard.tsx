@@ -21,15 +21,20 @@ export interface ListingCardProps {
   /** Путь превью: показывается, пока грузится большое фото. */
   thumb?: string | null;
   title: string;
-  /** Вторая строка: «заведение · город» или «категория · город». */
+  /** Вторая строка: «категория · город». */
   subtitle: string;
   rating?: { avg: number; count: number } | null;
   /** Плашка занятости поверх фото; null — поиск без даты, плашки нет. */
   badge?: ListingBadge | null;
   /** Готовая строка цены. Пусто — цены нет, priceHint идёт вместо неё. */
   price?: string | null;
-  /** Пояснение под ценой: «от · за вечер · 100–300 гостей». */
+  /** Пояснение под ценой: «от · за м²». */
   priceHint?: string | null;
+  /**
+   * Строки под ценой: позиции прайса, совпавшие с поиском
+   * («Газоблок 600×300 — 650 ₸ за шт»).
+   */
+  extraLines?: string[];
   onPress: () => void;
   /** Без него сердца нет вовсе. */
   onToggleFavorite?: () => void;
@@ -37,8 +42,8 @@ export interface ListingCardProps {
 }
 
 /**
- * Карточка объявления в поиске и избранном — общая основа HallCard и
- * ProviderCard. Сама про залы и исполнителей не знает: получает готовые
+ * Карточка объявления в поиске и избранном — основа ProviderCard.
+ * Сама про магазины и бригады не знает: получает готовые
  * строки, а что в них написано, решает обёртка.
  *
  * Сердце — сосед карточки, а не её ребёнок. Вложенная кнопка внутри кнопки
@@ -54,6 +59,7 @@ export function ListingCard({
   badge,
   price,
   priceHint,
+  extraLines,
   onPress,
   onToggleFavorite,
   isFavorite = false,
@@ -76,6 +82,7 @@ export function ListingCard({
     badge?.label,
     price,
     priceHint,
+    ...(extraLines ?? []),
   ]
     .filter(Boolean)
     .join(', ');
@@ -148,6 +155,15 @@ export function ListingCard({
               </Text>
             ) : null}
           </View>
+          {extraLines && extraLines.length > 0 ? (
+            <View style={styles.extra}>
+              {extraLines.map((line, i) => (
+                <Text key={i} style={styles.extraLine} numberOfLines={1}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+          ) : null}
         </View>
       </Pressable>
 
@@ -196,4 +212,12 @@ const makeStyles = (colors: ThemeColors) =>
     price: { fontSize: text.subtitle, fontWeight: '700', color: colors.primary },
     priceHint: { fontSize: text.caption, color: colors.muted },
     noPrice: { fontSize: text.body, fontWeight: '500', color: colors.muted },
+    extra: {
+      marginTop: 8,
+      paddingTop: 8,
+      gap: 4,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    extraLine: { fontSize: text.caption, color: colors.text },
   });

@@ -23,7 +23,6 @@ from libs.common import fit_to_sql
 # На что можно пожаловаться и с какой причиной. Причины — коды: подписи к ним
 # у приложения свои, на языке интерфейса.
 REASONS = {
-    'hall': ('false_info', 'photos', 'fraud', 'offensive', 'spam', 'other'),
     'provider': ('false_info', 'photos', 'fraud', 'offensive', 'spam', 'other'),
     'review': ('offensive', 'spam', 'false_info', 'other'),
     'chat': ('offensive', 'fraud', 'spam', 'other'),
@@ -38,7 +37,7 @@ REASON_LABELS = {
     'spam': 'Спам или реклама',
     'other': 'Другое',
 }
-TARGET_LABELS = {'hall': 'Зал', 'provider': 'Исполнитель', 'review': 'Отзыв', 'chat': 'Переписка'}
+TARGET_LABELS = {'provider': 'Объявление', 'review': 'Отзыв', 'chat': 'Переписка'}
 
 STATUSES = ('new', 'resolved', 'rejected')
 
@@ -49,7 +48,6 @@ OTHER_COMMENT_MIN = 5
 DAILY_LIMIT = 20
 
 _OWN = {
-    'hall': 'Это ваше объявление — пожаловаться на него нельзя',
     'provider': 'Это ваше объявление — пожаловаться на него нельзя',
     'review': 'Это ваш отзыв — пожаловаться на него нельзя',
     # Бывает, когда владелец написал сам себе из карточки своего объявления.
@@ -64,30 +62,20 @@ async def find_target(target_type: str, guid: str, user_id: int) -> dict:
     такого или человеку его не видно — 404, своё — 400.
     """
     g = fit_to_sql(guid)
-    if target_type == 'hall':
-        rows = await query_db(f"""
-            SELECT h.id, h.name AS label, v.owner_id AS user_id, v.owner_id, null AS text,
-                   (h.is_active IS TRUE AND v.is_active IS TRUE) AS visible
-            FROM halls h JOIN venues v ON v.id = h.venue_id
-            WHERE h.guid = {g}
-        """)
-        missing = 'Зал не найден'
-    elif target_type == 'provider':
+    if target_type == 'provider':
         rows = await query_db(f"""
             SELECT p.id, p.name AS label, p.owner_id AS user_id, p.owner_id, null AS text,
                    (p.is_active IS TRUE) AS visible
             FROM providers p
             WHERE p.guid = {g}
         """)
-        missing = 'Исполнитель не найден'
+        missing = 'Объявление не найдено'
     elif target_type == 'review':
         rows = await query_db(f"""
-            SELECT r.id, COALESCE(h.name, p.name) AS label, r.client_id AS user_id,
-                   COALESCE(v.owner_id, p.owner_id) AS owner_id, r.text,
+            SELECT r.id, p.name AS label, r.client_id AS user_id,
+                   p.owner_id, r.text,
                    true AS visible
             FROM reviews r
-            LEFT JOIN halls h ON h.id = r.hall_id
-            LEFT JOIN venues v ON v.id = h.venue_id
             LEFT JOIN providers p ON p.id = r.provider_id
             WHERE r.guid = {g}
         """)
@@ -95,11 +83,10 @@ async def find_target(target_type: str, guid: str, user_id: int) -> dict:
     else:
         # Переписку видят только двое: чужой guid — «не найдено», а не «нельзя».
         rows = await query_db(f"""
-            SELECT c.id, COALESCE(h.name, p.name) AS label, c.owner_id, null AS text,
+            SELECT c.id, p.name AS label, c.owner_id, null AS text,
                    CASE WHEN c.client_id = {fit_to_sql(user_id)} THEN c.owner_id ELSE c.client_id END AS user_id,
                    (c.client_id = {fit_to_sql(user_id)} OR c.owner_id = {fit_to_sql(user_id)}) AS visible
             FROM chats c
-            LEFT JOIN halls h ON h.id = c.hall_id
             LEFT JOIN providers p ON p.id = c.provider_id
             WHERE c.guid = {g}
         """)

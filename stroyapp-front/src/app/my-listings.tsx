@@ -13,17 +13,17 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError, dictsApi, providersApi, venuesApi } from '@/api';
-import type { Category, CategoryBrief, City, PriceUnit } from '@/api/types';
+import { ApiError, dictsApi, providersApi } from '@/api';
+import type { Category, CategoryBrief, City, ListingKind, PriceUnit } from '@/api/types';
 import { Button } from '@/components/Button';
-import { Card, Row } from '@/components/Card';
+import { Card, Row, SectionLabel } from '@/components/Card';
 import { Badge, EmptyState, ErrorBanner, Loader } from '@/components/Feedback';
 import { LIST_CONTENT_FILL, Screen } from '@/components/Screen';
 import { Sheet } from '@/components/Sheet';
 import { Thumb } from '@/components/Thumb';
 import { space, text, type ThemeColors } from '@/theme';
 import { useColors, useThemedStyles } from '@/theme/scheme';
-import { isVenueCategory } from '@/utils/category';
+import { KIND_ICON, KIND_KEY, KINDS } from '@/utils/category';
 import { formatPrice } from '@/utils/format';
 import { dictName } from '@/utils/i18nDict';
 import { mdiOrFallback } from '@/utils/icons';
@@ -36,37 +36,21 @@ import { unitLabel } from '@/utils/priceUnit';
  * а не готовым текстом: название на нужном языке собирается при отрисовке,
  * и смена языка не требует перезагрузки списка.
  */
-type Listing =
-  | {
-      kind: 'venue';
-      guid: string;
-      name: string;
-      cityId: number;
-      address: string;
-      thumb: string | null;
-      hallCount: number;
-      isActive: boolean;
-    }
-  | {
-      kind: 'provider';
-      guid: string;
-      name: string;
-      cityId: number;
-      category: CategoryBrief;
-      thumb: string | null;
-      priceFrom: number | null;
-      priceUnit: PriceUnit | null;
-      isActive: boolean;
-    };
+interface Listing {
+  guid: string;
+  name: string;
+  cityId: number;
+  category: CategoryBrief;
+  thumb: string | null;
+  priceFrom: number | null;
+  priceUnit: PriceUnit | null;
+  itemsCount: number;
+  isActive: boolean;
+}
 
 /**
- * Единый список объявлений владельца.
- *
- * Раньше это были два раздела — «Мои заведения» и «Мои исполнители». Деление
- * отражало разницу в данных (заведение двухуровневое: ресторан → залы;
- * исполнитель плоский), а не смысл для пользователя: тамада видел два пункта,
- * один из которых у него всегда пустой. Здесь всё в одном списке, а разница
- * проявляется только в том, какая форма открывается при добавлении.
+ * Объявления продавца: магазины и бригады одним списком. Разница между ними
+ * только в категории, форма одна.
  */
 export default function MyListingsScreen() {
   const { t } = useTranslation();
@@ -90,8 +74,7 @@ export default function MyListingsScreen() {
   const load = useCallback(async () => {
     const request = ++lastRequest.current;
     try {
-      const [venues, provs, cityList] = await Promise.all([
-        venuesApi.my(),
+      const [provs, cityList] = await Promise.all([
         providersApi.my(),
         // Справочник городов — только подписи в строках: его сбой не должен
         // прятать сами объявления за полосой ошибки. Строки тогда без города,
@@ -109,24 +92,8 @@ export default function MyListingsScreen() {
         setCities(cityMap);
       }
 
-      const venueItems = venues.items.map((v): Listing => {
-        // У заведения своих фото нет — берём превью первого зала, где оно есть.
-        const firstHall = v.halls.find((h) => h.main_thumb);
-        return {
-          kind: 'venue',
-          guid: v.guid,
-          name: v.name,
-          cityId: v.city_id,
-          address: v.address,
-          thumb: firstHall?.main_thumb ?? null,
-          hallCount: v.halls.length,
-          isActive: v.is_active,
-        };
-      });
-
       const providerItems = provs.items.map(
         (p): Listing => ({
-          kind: 'provider',
           guid: p.guid,
           name: p.name,
           cityId: p.city_id,
@@ -134,11 +101,12 @@ export default function MyListingsScreen() {
           thumb: p.main_thumb,
           priceFrom: p.price_from,
           priceUnit: p.price_unit,
+          itemsCount: p.items_count,
           isActive: p.is_active,
         }),
       );
 
-      setItems([...venueItems, ...providerItems]);
+      setItems(providerItems);
       // Ошибку снимаем после удачного ответа, а не перед запросом: иначе при
       // повторе после сбоя на время запроса показывалось бы «объявлений
       // нет» с кнопкой добавления — а мы этого ещё не знаем.
@@ -193,21 +161,12 @@ export default function MyListingsScreen() {
 
   const openCreate = (cat: Category) => {
     setPickerOpen(false);
-    // Заведение двухуровневое (ресторан → залы) — у него своя форма.
-    if (isVenueCategory(cat)) {
-      pushOnce('/venue-form');
-    } else {
-      pushOnce({ pathname: '/provider-form', params: { categoryId: String(cat.id) } });
-    }
+    pushOnce({ pathname: '/provider-form', params: { categoryId: String(cat.id) } });
   };
 
   const openListing = useCallback((item: Listing) => {
-    if (item.kind === 'venue') {
-      pushOnce({ pathname: '/venue', params: { venueGuid: item.guid } });
-    } else {
-      // У исполнителя отдельного экрана владельца нет: сразу форма.
-      pushOnce({ pathname: '/provider-form', params: { providerGuid: item.guid } });
-    }
+    // Отдельного экрана продавца у объявления нет: сразу форма с прайсом.
+    pushOnce({ pathname: '/provider-form', params: { providerGuid: item.guid } });
   }, []);
 
   const renderItem: ListRenderItem<Listing> = useCallback(
@@ -215,7 +174,7 @@ export default function MyListingsScreen() {
     [cities, openListing],
   );
 
-  const keyExtractor = useCallback((item: Listing) => `${item.kind}:${item.guid}`, []);
+  const keyExtractor = useCallback((item: Listing) => item.guid, []);
 
   const screenOptions = { headerShown: true, title: t('owner.listings_title') };
 
@@ -288,16 +247,28 @@ export default function MyListingsScreen() {
         {/* Sheet сам не прокручивается, а категорий может стать больше, чем
             влезает в шторку на небольшом экране. */}
         <ScrollView style={styles.sheetList}>
-          {categories.map((cat, index) => (
-            <Row
-              key={cat.id}
-              first={index === 0}
-              title={dictName(cat, lang)}
-              // Имя иконки с сервера набор MDI может не знать.
-              icon={mdiOrFallback(cat.icon)}
-              onPress={() => openCreate(cat)}
-            />
-          ))}
+          {/* Сначала вид — магазин или бригада, — под ним его категории. */}
+          {KINDS.map((kind: ListingKind) => {
+            const group = categories.filter((cat) => cat.kind === kind);
+            if (group.length === 0) return null;
+            return (
+              <View key={kind} style={styles.group}>
+                <View style={styles.groupLabel}>
+                  <SectionLabel>{t(KIND_KEY[kind])}</SectionLabel>
+                </View>
+                {group.map((cat, index) => (
+                  <Row
+                    key={cat.id}
+                    first={index === 0}
+                    title={dictName(cat, lang)}
+                    // Имя иконки с сервера набор MDI может не знать.
+                    icon={mdiOrFallback(cat.icon)}
+                    onPress={() => openCreate(cat)}
+                  />
+                ))}
+              </View>
+            );
+          })}
         </ScrollView>
       </Sheet>
     </Screen>
@@ -319,12 +290,9 @@ const ListingRow = memo(function ListingRow({ item, city, onPress }: ListingRowP
   const colors = useColors();
 
   const cityName = city ? dictName(city, lang) : '';
-  const meta = (
-    item.kind === 'venue' ? [cityName, item.address] : [dictName(item.category, lang), cityName]
-  )
-    .filter(Boolean)
-    .join(' · ');
-  const unit = item.kind === 'provider' ? unitLabel(t, item.priceUnit) : null;
+  const meta = [dictName(item.category, lang), cityName].filter(Boolean).join(' · ');
+  const unit = unitLabel(t, item.priceUnit);
+  const kind: ListingKind = item.category.kind ?? 'material';
 
   return (
     <Pressable
@@ -336,7 +304,7 @@ const ListingRow = memo(function ListingRow({ item, city, onPress }: ListingRowP
         <Thumb
           path={item.thumb}
           size={THUMB}
-          icon={item.kind === 'venue' ? 'domain' : 'account-star'}
+          icon={KIND_ICON[kind]}
           iconSize={32}
         />
 
@@ -350,13 +318,12 @@ const ListingRow = memo(function ListingRow({ item, city, onPress }: ListingRowP
             </Text>
           ) : null}
 
-          {item.kind === 'venue' ? (
-            <Text style={styles.meta} numberOfLines={1}>
-              {item.hallCount > 0
-                ? t('owner.halls_count', { count: item.hallCount })
-                : t('owner.no_halls')}
-            </Text>
-          ) : item.priceFrom == null ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {item.itemsCount > 0
+              ? t('owner.items_count', { count: item.itemsCount })
+              : t('owner.no_items')}
+          </Text>
+          {item.priceFrom == null ? (
             <Text style={styles.meta} numberOfLines={1}>
               {t('provider.price_negotiable')}
             </Text>
@@ -408,6 +375,8 @@ const makeStyles = (colors: ThemeColors) =>
     meta: { fontSize: text.caption, color: colors.muted },
     price: { fontWeight: '600', color: colors.primary },
     badge: { marginTop: 4 },
+    group: { marginBottom: space.gap },
+    groupLabel: { paddingHorizontal: space.page, paddingBottom: 4 },
     // Список выходит за поля шторки (у Sheet они space.page), а строки
     // возвращают отступ себе: подсветка нажатия и разделители идут от края
     // до края. flexShrink — чтобы длинный список сжимался под maxHeight

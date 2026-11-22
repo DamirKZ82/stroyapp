@@ -2,12 +2,11 @@ import { apiClient } from './client';
 import type { Booking, BookingStatus } from './types';
 
 export interface BookingCreateBody {
-  /** Ровно одно из двух. */
-  hall_guid?: string;
-  provider_guid?: string;
+  provider_guid: string;
+  /** Желаемая дата доставки или начала работ. */
   event_date: string;
-  guests_count: number;
-  event_type_id?: number;
+  /** Адрес объекта. */
+  address?: string;
   comment?: string;
 }
 
@@ -38,7 +37,7 @@ export const bookingsApi = {
     return data;
   },
 
-  async confirm(guid: string): Promise<{ booking: Booking; auto_rejected_count: number }> {
+  async confirm(guid: string): Promise<{ booking: Booking }> {
     const { data } = await apiClient.post(`/bookings/${guid}/confirm`);
     return data;
   },

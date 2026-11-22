@@ -16,12 +16,12 @@ export type SortOption = 'rating_desc' | 'price_asc' | 'price_desc';
 
 export interface FiltersValue {
   priceMax: number | null;
-  amenityIds: number[];
+  tagIds: number[];
   sort: SortOption;
 }
 
 /**
- * Тег фильтра: удобство зала или атрибут исполнителя. Шторке нужны только
+ * Тег фильтра: признак объявления — доставка, гарантия… Шторке нужны только
  * id и названия, поэтому подходит любой справочник с такими полями.
  */
 interface FilterTag {
@@ -36,9 +36,9 @@ interface FiltersSheetProps {
   value: FiltersValue;
   onApply: (value: FiltersValue) => void;
   /** Теги для фильтра. Пустой список — раздела с чипами нет. */
-  amenities: FilterTag[];
+  tags: FilterTag[];
   /** Подпись раздела с тегами. По умолчанию — «Удобства». */
-  amenitiesLabel?: string;
+  tagsLabel?: string;
 }
 
 const DEFAULT_SORT: SortOption = 'rating_desc';
@@ -58,14 +58,14 @@ export function FiltersSheet({
   onClose,
   value,
   onApply,
-  amenities,
-  amenitiesLabel,
+  tags,
+  tagsLabel,
 }: FiltersSheetProps) {
   const { t } = useTranslation();
   const lang = useLang();
 
   const [priceMax, setPriceMax] = useState(priceText(value.priceMax));
-  const [amenityIds, setAmenityIds] = useState<number[]>(value.amenityIds);
+  const [tagIds, setTagIds] = useState<number[]>(value.tagIds);
   const [sort, setSort] = useState<SortOption>(value.sort);
 
   // Черновик сверяется с value только в момент открытия. Следить за самим
@@ -78,19 +78,19 @@ export function FiltersSheet({
     setWasVisible(visible);
     if (visible) {
       setPriceMax(priceText(value.priceMax));
-      setAmenityIds(value.amenityIds);
+      setTagIds(value.tagIds);
       setSort(value.sort);
     }
   }
 
   const toggleAmenity = (id: number) =>
-    setAmenityIds((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+    setTagIds((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
 
   const apply = () => {
     const price = intOrNull(priceMax);
     onApply({
       priceMax: price !== null && price > 0 ? price : null,
-      amenityIds,
+      tagIds,
       sort,
     });
     onClose();
@@ -104,9 +104,9 @@ export function FiltersSheet({
   // не сработал.
   const reset = () => {
     setPriceMax('');
-    setAmenityIds([]);
+    setTagIds([]);
     setSort(DEFAULT_SORT);
-    onApply({ priceMax: null, amenityIds: [], sort: DEFAULT_SORT });
+    onApply({ priceMax: null, tagIds: [], sort: DEFAULT_SORT });
     onClose();
   };
 
@@ -145,14 +145,14 @@ export function FiltersSheet({
           />
         </Field>
 
-        {amenities.length > 0 ? (
-          <Field label={amenitiesLabel ?? t('filters.amenities')}>
+        {tags.length > 0 ? (
+          <Field label={tagsLabel ?? t('provider.attrs_label')}>
             <ChipWrap>
-              {amenities.map((item) => (
+              {tags.map((item) => (
                 <Chip
                   key={item.id}
                   label={dictName(item, lang)}
-                  selected={amenityIds.includes(item.id)}
+                  selected={tagIds.includes(item.id)}
                   onPress={() => toggleAmenity(item.id)}
                 />
               ))}

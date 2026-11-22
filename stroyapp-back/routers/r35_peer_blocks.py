@@ -92,7 +92,7 @@ async def list_peer_blocks(user=Depends(auth_user)):
     # Если переписок несколько, берём ту, где писали последней, а не ту, что
     # создана позже: пустой чат, который заблокированный откроет кнопкой
     # «Написать» на другом объявлении, не должен подменять разговор.
-    # Переписки может не быть вовсе: чат зала удаляется вместе с залом, а
+    # Переписки может не быть вовсе: чат объявления удаляется вместе с объявлением, а
     # блокировка остаётся.
     # Ни телефона, ни id заблокированного в ответе нет — приложению они не нужны.
     rows = await query_db(f"""
@@ -101,9 +101,8 @@ async def list_peer_blocks(user=Depends(auth_user)):
         FROM peer_blocks pb
         LEFT JOIN users u ON u.id = pb.peer_id
         LEFT JOIN LATERAL (
-            SELECT c.guid AS chat_guid, COALESCE(h.name, p.name) AS subject_name
+            SELECT c.guid AS chat_guid, p.name AS subject_name
             FROM chats c
-            LEFT JOIN halls h ON h.id = c.hall_id
             LEFT JOIN providers p ON p.id = c.provider_id
             WHERE (c.client_id = pb.user_id AND c.owner_id = pb.peer_id)
                OR (c.client_id = pb.peer_id AND c.owner_id = pb.user_id)

@@ -1,13 +1,19 @@
 -- StroyApp — полный DDL.
--- Применяется один раз при первом запуске (idempotent: IF NOT EXISTS).
+-- Применяется при каждом старте (idempotent: IF NOT EXISTS).
 -- Даты/таймштампы — CHAR(10)/CHAR(19) согласно гайдлайнам.
+--
+-- Схема выросла из ToiApp. Главная сущность — объявление (таблица providers):
+-- магазин стройматериалов или бригада / мастер. Какое из двух — решает
+-- категория (categories.kind: 'material' | 'service'). У объявления есть
+-- прайс (provider_items): позиции с единицей измерения и ценой, по ним
+-- работает поиск конкретных товаров и работ.
 
 -- Очередь на применение. Файл выполняется одной транзакцией, а воркеров
 -- uvicorn в проде два, и каждый при старте применяет его целиком. Без очереди
 -- два одновременных прогона берут блокировки таблиц вперемешку и упираются
 -- друг в друга: Postgres снимает один из них с ошибкой deadlock, и этот воркер
 -- падает на старте. Блокировка держится до конца транзакции и снимается сама.
-SELECT pg_advisory_xact_lock(20261006);
+SELECT pg_advisory_xact_lock(20261122);
 
 -- =========================================================================
 -- Справочники
@@ -20,26 +26,17 @@ CREATE TABLE IF NOT EXISTS cities (
     is_active    BOOLEAN DEFAULT TRUE
 );
 
-CREATE TABLE IF NOT EXISTS holidays (
-    id           SERIAL PRIMARY KEY,
-    date         CHAR(10) NOT NULL UNIQUE,
-    name_ru      VARCHAR(200) NOT NULL,
-    name_kz      VARCHAR(200) NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS event_types (
+-- Категории двух видов: kind = 'material' (магазины стройматериалов)
+-- и 'service' (бригады, мастера, доставка и спецтехника).
+CREATE TABLE IF NOT EXISTS categories (
     id           SERIAL PRIMARY KEY,
     code         VARCHAR(50) UNIQUE NOT NULL,
-    name_ru      VARCHAR(100) NOT NULL,
-    name_kz      VARCHAR(100) NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS hall_amenities (
-    id           SERIAL PRIMARY KEY,
-    code         VARCHAR(50) UNIQUE NOT NULL,
+    kind         VARCHAR(20) NOT NULL,
     name_ru      VARCHAR(100) NOT NULL,
     name_kz      VARCHAR(100) NOT NULL,
-    icon         VARCHAR(50)
+    icon         VARCHAR(50),
+    sort_order   INT DEFAULT 0,
+    CONSTRAINT categories_kind_chk CHECK (kind IN ('material', 'service'))
 );
 
 -- =========================================================================
@@ -47,107 +44,163 @@ CREATE TABLE IF NOT EXISTS hall_amenities (
 -- =========================================================================
 
 CREATE TABLE IF NOT EXISTS users (
-    id           SERIAL PRIMARY KEY,
-    guid         CHAR(36) UNIQUE NOT NULL,
-    phone        VARCHAR(20) UNIQUE NOT NULL,
-    full_name    VARCHAR(200),
-    language     CHAR(2) DEFAULT 'ru',
-    fcm_token    VARCHAR(500),
-    is_blocked   BOOLEAN DEFAULT FALSE,
-    created_at   CHAR(19) NOT NULL,
-    updated_at   CHAR(19) NOT NULL
+    id             SERIAL PRIMARY KEY,
+    guid           CHAR(36) UNIQUE NOT NULL,
+    phone          VARCHAR(20) UNIQUE NOT NULL,
+    full_name      VARCHAR(200),
+    language       CHAR(2) DEFAULT 'ru',
+    fcm_token      VARCHAR(500),
+    is_blocked     BOOLEAN DEFAULT FALSE,
+    blocked_at     CHAR(19),
+    blocked_reason TEXT,
+    -- is_admin   — назначен админом веб-админки /admin: в самой админке
+    --              другим админом или скриптом scripts/make_admin.py с сервера.
+    --              Войти он сможет, когда сам задаст пароль (admin_credentials).
+    -- is_service — служебный аккаунт (ревьюеры сторов, тестовые входы).
+    --              Создаётся из админки, входит по фиксированному коду
+    --              service_code без SMS.
+    is_admin       BOOLEAN DEFAULT FALSE,
+    is_service     BOOLEAN DEFAULT FALSE,
+    service_code   CHAR(4),
+    created_at     CHAR(19) NOT NULL,
+    updated_at     CHAR(19) NOT NULL
 );
 
+-- attempts — неверные попытки ввода кода. После лимита код гасится,
+-- иначе 4 цифры перебираются за время жизни кода.
 CREATE TABLE IF NOT EXISTS otp_codes (
     id           SERIAL PRIMARY KEY,
     phone        VARCHAR(20) NOT NULL,
     code         CHAR(4) NOT NULL,
     created_at   CHAR(19) NOT NULL,
     expires_at   CHAR(19) NOT NULL,
-    used         BOOLEAN DEFAULT FALSE
+    used         BOOLEAN DEFAULT FALSE,
+    attempts     INT DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_codes(phone);
 
 -- =========================================================================
--- Заведения и залы
+-- Объявления: магазины и бригады
+--
+-- hidden_at / hidden_reason — объявление скрыл модератор. При скрытии
+--     is_active ставится в false: поиск, карточка, заявки и чаты прячут
+--     объявление по уже существующему признаку. Избранное на is_active не
+--     смотрит, поэтому проверяет hidden_at само. Прежнее значение is_active
+--     запоминается в was_active и возвращается, когда модератор объявление
+--     вернёт. Пока hidden_at задан, владелец включить is_active не может.
+-- hidden_by_block — объявление скрыто не само по себе, а вместе с
+--     блокировкой владельца; при разблокировке такие возвращаются сами.
+-- price_from / price_unit — «цена от» для карточки в списке. Если прайс
+--     заполнен, приложение показывает минимальную цену из него.
 -- =========================================================================
 
-CREATE TABLE IF NOT EXISTS venues (
+CREATE TABLE IF NOT EXISTS providers (
+    id              SERIAL PRIMARY KEY,
+    guid            CHAR(36) UNIQUE NOT NULL,
+    owner_id        INT NOT NULL REFERENCES users(id),
+    category_id     INT NOT NULL REFERENCES categories(id),
+    city_id         INT NOT NULL REFERENCES cities(id),
+    name            VARCHAR(200) NOT NULL,
+    description     TEXT,
+    phone           VARCHAR(20),
+    address         VARCHAR(500),
+    latitude        DECIMAL(10, 7),
+    longitude       DECIMAL(10, 7),
+    price_from      INT,
+    price_unit      VARCHAR(20),
+    is_active       BOOLEAN DEFAULT TRUE,
+    hidden_at       CHAR(19),
+    hidden_reason   TEXT,
+    was_active      BOOLEAN,
+    hidden_by_block BOOLEAN DEFAULT FALSE,
+    created_at      CHAR(19) NOT NULL,
+    updated_at      CHAR(19) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_providers_owner    ON providers(owner_id);
+CREATE INDEX IF NOT EXISTS idx_providers_category ON providers(category_id);
+CREATE INDEX IF NOT EXISTS idx_providers_city     ON providers(city_id);
+
+CREATE TABLE IF NOT EXISTS provider_photos (
     id           SERIAL PRIMARY KEY,
-    guid         CHAR(36) UNIQUE NOT NULL,
-    owner_id     INT NOT NULL REFERENCES users(id),
-    city_id      INT NOT NULL REFERENCES cities(id),
-    name         VARCHAR(200) NOT NULL,
-    address      VARCHAR(500) NOT NULL,
-    latitude     DECIMAL(10, 7),
-    longitude    DECIMAL(10, 7),
-    description  TEXT,
-    phone        VARCHAR(20),
-    is_active    BOOLEAN DEFAULT TRUE,
-    created_at   CHAR(19) NOT NULL,
-    updated_at   CHAR(19) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_venues_owner ON venues(owner_id);
-CREATE INDEX IF NOT EXISTS idx_venues_city  ON venues(city_id);
-
-CREATE TABLE IF NOT EXISTS halls (
-    id                SERIAL PRIMARY KEY,
-    guid              CHAR(36) UNIQUE NOT NULL,
-    venue_id          INT NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
-    name              VARCHAR(200) NOT NULL,
-    description       TEXT,
-    area_sqm          INT,
-    capacity_min      INT,
-    capacity_max      INT,
-    price_weekday     INT NOT NULL,
-    price_weekend     INT NOT NULL,
-    is_active         BOOLEAN DEFAULT TRUE,
-    created_at        CHAR(19) NOT NULL,
-    updated_at        CHAR(19) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_halls_venue ON halls(venue_id);
-
-CREATE TABLE IF NOT EXISTS hall_amenity_links (
-    hall_id      INT NOT NULL REFERENCES halls(id) ON DELETE CASCADE,
-    amenity_id   INT NOT NULL REFERENCES hall_amenities(id),
-    PRIMARY KEY (hall_id, amenity_id)
-);
-
-CREATE TABLE IF NOT EXISTS hall_photos (
-    id           SERIAL PRIMARY KEY,
-    hall_id      INT NOT NULL REFERENCES halls(id) ON DELETE CASCADE,
+    provider_id  INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
     file_path    VARCHAR(500) NOT NULL,
     thumb_path   VARCHAR(500) NOT NULL,
     sort_order   INT DEFAULT 0,
     created_at   CHAR(19) NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_hall_photos_hall ON hall_photos(hall_id);
+CREATE INDEX IF NOT EXISTS idx_provider_photos_provider ON provider_photos(provider_id);
+
+-- Признаки объявления по категориям (доставка, рассрочка, договор, гарантия…).
+-- Фильтруются в поиске. category_id — категория, для которой признак
+-- показывается.
+CREATE TABLE IF NOT EXISTS provider_attr_types (
+    id           SERIAL PRIMARY KEY,
+    category_id  INT NOT NULL REFERENCES categories(id),
+    code         VARCHAR(50) NOT NULL,
+    name_ru      VARCHAR(100) NOT NULL,
+    name_kz      VARCHAR(100) NOT NULL,
+    icon         VARCHAR(50),
+    sort_order   INT DEFAULT 0,
+    UNIQUE (category_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS provider_attr_links (
+    provider_id  INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    attr_id      INT NOT NULL REFERENCES provider_attr_types(id),
+    PRIMARY KEY (provider_id, attr_id)
+);
+
+-- Прайс объявления: товары магазина или работы бригады.
+-- unit — единица измерения (см. PRICE_UNITS в routers/r23_providers.py).
+-- price — цена за единицу в тенге; NULL — «договорная».
+CREATE TABLE IF NOT EXISTS provider_items (
+    id           SERIAL PRIMARY KEY,
+    guid         CHAR(36) UNIQUE NOT NULL,
+    provider_id  INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    name         VARCHAR(200) NOT NULL,
+    unit         VARCHAR(20) NOT NULL,
+    price        INT,
+    sort_order   INT DEFAULT 0,
+    created_at   CHAR(19) NOT NULL,
+    updated_at   CHAR(19) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_items_provider ON provider_items(provider_id, sort_order);
+-- Поиск по названию позиции: ILIKE '%...%' по lower(name).
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_provider_items_name_trgm
+    ON provider_items USING gin (lower(name) gin_trgm_ops);
 
 -- =========================================================================
--- Бронирование
+-- Заявки
+--
+-- Клиент пишет магазину или бригаде: что нужно (comment), куда (address)
+-- и к какому сроку (event_date — желаемая дата доставки или начала работ).
+-- Календаря занятости нет: одна дата не исключает другие заявки.
+-- review_removed_at — отзыв по этой заявке удалил модератор; оставить новый
+--     автор уже не может.
 -- =========================================================================
 
 CREATE TABLE IF NOT EXISTS bookings (
-    id               SERIAL PRIMARY KEY,
-    guid             CHAR(36) UNIQUE NOT NULL,
-    hall_id          INT NOT NULL REFERENCES halls(id),
-    client_id        INT NOT NULL REFERENCES users(id),
-    event_date       CHAR(10) NOT NULL,
-    guests_count     INT NOT NULL,
-    event_type_id    INT REFERENCES event_types(id),
-    comment          TEXT,
-    status           VARCHAR(20) NOT NULL,    -- 'pending' | 'confirmed' | 'rejected' | 'cancelled'
-    rejected_reason  TEXT,
-    created_at       CHAR(19) NOT NULL,
-    updated_at       CHAR(19) NOT NULL
+    id                 SERIAL PRIMARY KEY,
+    guid               CHAR(36) UNIQUE NOT NULL,
+    provider_id        INT NOT NULL REFERENCES providers(id),
+    client_id          INT NOT NULL REFERENCES users(id),
+    event_date         CHAR(10) NOT NULL,
+    address            VARCHAR(500),
+    comment            TEXT,
+    status             VARCHAR(20) NOT NULL,    -- 'pending' | 'confirmed' | 'rejected' | 'cancelled'
+    rejected_reason    TEXT,
+    review_removed_at  CHAR(19),
+    created_at         CHAR(19) NOT NULL,
+    updated_at         CHAR(19) NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_bookings_hall_date ON bookings(hall_id, event_date);
-CREATE INDEX IF NOT EXISTS idx_bookings_client    ON bookings(client_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_provider_date ON bookings(provider_id, event_date);
+CREATE INDEX IF NOT EXISTS idx_bookings_client        ON bookings(client_id);
 
 -- =========================================================================
 -- Отзывы
@@ -157,7 +210,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     id              SERIAL PRIMARY KEY,
     guid            CHAR(36) UNIQUE NOT NULL,
     booking_id      INT NOT NULL UNIQUE REFERENCES bookings(id),
-    hall_id         INT NOT NULL REFERENCES halls(id),
+    provider_id     INT NOT NULL REFERENCES providers(id),
     client_id       INT NOT NULL REFERENCES users(id),
     rating          INT NOT NULL,
     text            TEXT,
@@ -166,7 +219,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     created_at      CHAR(19) NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_reviews_hall ON reviews(hall_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_provider ON reviews(provider_id);
 
 -- =========================================================================
 -- Избранное
@@ -174,10 +227,45 @@ CREATE INDEX IF NOT EXISTS idx_reviews_hall ON reviews(hall_id);
 
 CREATE TABLE IF NOT EXISTS favorites (
     user_id      INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    hall_id      INT NOT NULL REFERENCES halls(id) ON DELETE CASCADE,
+    provider_id  INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
     created_at   CHAR(19) NOT NULL,
-    PRIMARY KEY (user_id, hall_id)
+    PRIMARY KEY (user_id, provider_id)
 );
+
+-- =========================================================================
+-- Чаты: один чат между клиентом и объявлением.
+-- booking_id — последняя заявка клиента по этому объявлению.
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS chats (
+    id                   SERIAL PRIMARY KEY,
+    guid                 CHAR(36) UNIQUE NOT NULL,
+    provider_id          INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    client_id            INT NOT NULL REFERENCES users(id),
+    owner_id             INT NOT NULL REFERENCES users(id),
+    booking_id           INT REFERENCES bookings(id) ON DELETE SET NULL,
+    last_message_at      CHAR(19),
+    last_message_preview TEXT,
+    created_at           CHAR(19) NOT NULL,
+    UNIQUE (provider_id, client_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chats_client   ON chats(client_id, last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chats_owner    ON chats(owner_id,  last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chats_provider ON chats(provider_id);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          SERIAL PRIMARY KEY,
+    guid        CHAR(36) UNIQUE NOT NULL,
+    chat_id     INT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    sender_id   INT NOT NULL REFERENCES users(id),
+    text        TEXT NOT NULL,
+    created_at  CHAR(19) NOT NULL,
+    read_at     CHAR(19)    -- заполняется когда получатель прочитал
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_chat ON chat_messages(chat_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_unread ON chat_messages(chat_id, sender_id) WHERE read_at IS NULL;
 
 -- =========================================================================
 -- Служебные (ошибки и варны)
@@ -214,283 +302,14 @@ CREATE TABLE IF NOT EXISTS warns (
 );
 
 -- =========================================================================
--- Миграции (ALTER-ы). Добавляются в конец, все идемпотентные.
--- =========================================================================
-
--- Этап 3: цена фиксируется в момент бронирования.
-ALTER TABLE bookings ADD COLUMN IF NOT EXISTS price_at_booking INT;
-
--- =========================================================================
--- Этап 11: Чаты (переписка между клиентом и владельцем по залу)
+-- Админка
 --
--- Чат привязан к ЗАЛУ, а не к заявке. Один чат между клиентом и залом.
--- booking_id опционально — прикрепляется когда клиент оформляет заявку.
--- =========================================================================
-
--- Сносим старые таблицы, если они были созданы до этапа 11 (схема с booking_id UNIQUE)
-DO $mig$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'chats')
-       AND NOT EXISTS (
-           SELECT 1 FROM information_schema.columns
-           WHERE table_name = 'chats' AND column_name = 'hall_id'
-       )
-    THEN
-        DROP TABLE IF EXISTS chat_messages CASCADE;
-        DROP TABLE IF EXISTS chats CASCADE;
-    END IF;
-END
-$mig$;
-
-CREATE TABLE IF NOT EXISTS chats (
-    id                  SERIAL PRIMARY KEY,
-    guid                CHAR(36) UNIQUE NOT NULL,
-    hall_id             INT NOT NULL REFERENCES halls(id) ON DELETE CASCADE,
-    client_id           INT NOT NULL REFERENCES users(id),
-    owner_id            INT NOT NULL REFERENCES users(id),
-    booking_id          INT REFERENCES bookings(id) ON DELETE SET NULL,
-    last_message_at     CHAR(19),
-    last_message_preview TEXT,
-    created_at          CHAR(19) NOT NULL,
-    UNIQUE (hall_id, client_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_chats_client ON chats(client_id, last_message_at DESC);
-CREATE INDEX IF NOT EXISTS idx_chats_owner  ON chats(owner_id,  last_message_at DESC);
-CREATE INDEX IF NOT EXISTS idx_chats_hall   ON chats(hall_id);
-
-CREATE TABLE IF NOT EXISTS chat_messages (
-    id          SERIAL PRIMARY KEY,
-    guid        CHAR(36) UNIQUE NOT NULL,
-    chat_id     INT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-    sender_id   INT NOT NULL REFERENCES users(id),
-    text        TEXT NOT NULL,
-    created_at  CHAR(19) NOT NULL,
-    read_at     CHAR(19)    -- заполняется когда получатель прочитал
-);
-
-CREATE INDEX IF NOT EXISTS idx_chat_messages_chat ON chat_messages(chat_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_unread ON chat_messages(chat_id, sender_id) WHERE read_at IS NULL;
-
--- =========================================================================
--- Этап 12: Категории и исполнители (providers)
---
--- Рестораны (venues/halls) НЕ трогаем. Новые категории (тамада, артисты,
--- декораторы, кейтеринг, фото-видео) — плоская сущность providers.
--- bookings / reviews / chats / favorites становятся полиморфными:
--- ссылаются ЛИБО на hall_id, ЛИБО на provider_id (ровно одно из двух).
--- =========================================================================
-
-CREATE TABLE IF NOT EXISTS categories (
-    id           SERIAL PRIMARY KEY,
-    code         VARCHAR(50) UNIQUE NOT NULL,
-    name_ru      VARCHAR(100) NOT NULL,
-    name_kz      VARCHAR(100) NOT NULL,
-    icon         VARCHAR(50),
-    sort_order   INT DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS providers (
-    id           SERIAL PRIMARY KEY,
-    guid         CHAR(36) UNIQUE NOT NULL,
-    owner_id     INT NOT NULL REFERENCES users(id),
-    category_id  INT NOT NULL REFERENCES categories(id),
-    city_id      INT NOT NULL REFERENCES cities(id),
-    name         VARCHAR(200) NOT NULL,
-    description  TEXT,
-    phone        VARCHAR(20),
-    latitude     DECIMAL(10, 7),
-    longitude    DECIMAL(10, 7),
-    price_from   INT,
-    price_unit   VARCHAR(20),   -- 'event' | 'hour' | 'person' | 'day'
-    is_active    BOOLEAN DEFAULT TRUE,
-    created_at   CHAR(19) NOT NULL,
-    updated_at   CHAR(19) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_providers_owner    ON providers(owner_id);
-CREATE INDEX IF NOT EXISTS idx_providers_category ON providers(category_id);
-CREATE INDEX IF NOT EXISTS idx_providers_city     ON providers(city_id);
-
-CREATE TABLE IF NOT EXISTS provider_photos (
-    id           SERIAL PRIMARY KEY,
-    provider_id  INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-    file_path    VARCHAR(500) NOT NULL,
-    thumb_path   VARCHAR(500) NOT NULL,
-    sort_order   INT DEFAULT 0,
-    created_at   CHAR(19) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_provider_photos_provider ON provider_photos(provider_id);
-
--- Атрибуты по категориям (паттерн hall_amenities / hall_amenity_links).
--- Это «своя модель у категории»: для каждой категории — свой набор атрибутов
--- (артист → певец/танцор/фокусник; кейтеринг → кухня; и т.д.). Фильтруемые в поиске.
-CREATE TABLE IF NOT EXISTS provider_attr_types (
-    id           SERIAL PRIMARY KEY,
-    category_id  INT NOT NULL REFERENCES categories(id),
-    code         VARCHAR(50) NOT NULL,
-    name_ru      VARCHAR(100) NOT NULL,
-    name_kz      VARCHAR(100) NOT NULL,
-    icon         VARCHAR(50),
-    sort_order   INT DEFAULT 0,
-    UNIQUE (category_id, code)
-);
-
-CREATE TABLE IF NOT EXISTS provider_attr_links (
-    provider_id  INT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-    attr_id      INT NOT NULL REFERENCES provider_attr_types(id),
-    PRIMARY KEY (provider_id, attr_id)
-);
-
--- ---- Полиморфизм: bookings ----
-ALTER TABLE bookings ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
-ALTER TABLE bookings ALTER COLUMN hall_id DROP NOT NULL;
-DO $mig$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_subject_chk') THEN
-        ALTER TABLE bookings ADD CONSTRAINT bookings_subject_chk
-            CHECK ((hall_id IS NOT NULL) <> (provider_id IS NOT NULL));
-    END IF;
-END
-$mig$;
-CREATE INDEX IF NOT EXISTS idx_bookings_provider_date ON bookings(provider_id, event_date);
-
--- ---- Полиморфизм: reviews ----
-ALTER TABLE reviews ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
-ALTER TABLE reviews ALTER COLUMN hall_id DROP NOT NULL;
-DO $mig$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'reviews_subject_chk') THEN
-        ALTER TABLE reviews ADD CONSTRAINT reviews_subject_chk
-            CHECK ((hall_id IS NOT NULL) <> (provider_id IS NOT NULL));
-    END IF;
-END
-$mig$;
-CREATE INDEX IF NOT EXISTS idx_reviews_provider ON reviews(provider_id);
-
--- ---- Полиморфизм: chats ----
-ALTER TABLE chats ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
-ALTER TABLE chats ALTER COLUMN hall_id DROP NOT NULL;
-ALTER TABLE chats DROP CONSTRAINT IF EXISTS chats_hall_id_client_id_key;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_chats_hall_client
-    ON chats(hall_id, client_id) WHERE hall_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_chats_provider_client
-    ON chats(provider_id, client_id) WHERE provider_id IS NOT NULL;
-DO $mig$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chats_subject_chk') THEN
-        ALTER TABLE chats ADD CONSTRAINT chats_subject_chk
-            CHECK ((hall_id IS NOT NULL) <> (provider_id IS NOT NULL));
-    END IF;
-END
-$mig$;
-CREATE INDEX IF NOT EXISTS idx_chats_provider ON chats(provider_id);
-
--- ---- Полиморфизм: favorites ----
--- Старый PK (user_id, hall_id) больше не годится — заменяем на два
--- обычных UNIQUE-индекса (NULL'ы трактуются как различные, поэтому
--- избранные-исполнители с hall_id=NULL не конфликтуют между собой).
-ALTER TABLE favorites ADD COLUMN IF NOT EXISTS provider_id INT REFERENCES providers(id);
--- PK (user_id, hall_id) надо снять ДО DROP NOT NULL: колонку из первичного
--- ключа Postgres не даёт сделать nullable (ошибка 42P16).
-ALTER TABLE favorites DROP CONSTRAINT IF EXISTS favorites_pkey;
-ALTER TABLE favorites ALTER COLUMN hall_id DROP NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_favorites_user_hall
-    ON favorites(user_id, hall_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_favorites_user_provider
-    ON favorites(user_id, provider_id);
-DO $mig$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'favorites_subject_chk') THEN
-        ALTER TABLE favorites ADD CONSTRAINT favorites_subject_chk
-            CHECK ((hall_id IS NOT NULL) <> (provider_id IS NOT NULL));
-    END IF;
-END
-$mig$;
-
-
--- =========================================================================
--- Админка и служебные аккаунты
---
--- is_admin     — назначен админом веб-админки /admin: в самой админке
---                другим админом или скриптом scripts/make_admin.py с сервера.
---                Войти он сможет, когда сам задаст пароль (admin_credentials).
--- is_service   — служебный аккаунт (ревьюеры сторов, тестовые входы).
---                Создаётся из админки, входит по фиксированному коду
---                service_code без SMS.
--- attempts     — неверные попытки ввода кода. После лимита код гасится,
---                иначе 4 цифры перебираются за время жизни кода.
--- =========================================================================
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_service BOOLEAN DEFAULT FALSE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS service_code CHAR(4);
-ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS attempts INT DEFAULT 0;
-
-
--- =========================================================================
--- Модерация из админки
---
--- hidden_at / hidden_reason — объявление скрыл модератор. При скрытии
---     is_active ставится в false: поиск, карточка, заявки и чаты прячут
---     объявление по уже существующему признаку. Избранное на is_active не
---     смотрит, поэтому проверяет hidden_at само. Прежнее значение is_active
---     запоминается в was_active и возвращается, когда модератор объявление
---     вернёт. Пока hidden_at задан, владелец включить is_active не может.
--- hidden_by_block — объявление скрыто не само по себе, а вместе с
---     блокировкой владельца; при разблокировке такие возвращаются сами.
--- users.blocked_at / blocked_reason — когда и за что заблокирован человек
---     (сам запрет входа — старый is_blocked).
--- bookings.review_removed_at — отзыв по этой заявке удалил модератор;
---     оставить новый автор уже не может.
 -- admin_actions — журнал: кто из админов что сделал. Без внешних ключей:
 --     сама запись переживает удаление и админа, и того, над кем действие.
 --     subject_user_ids — чьи данные попали в target_label и details; когда
 --     такой человек удаляет аккаунт, запись обезличивается
 --     (services/account.py).
---
--- Колонки добавляются внутри DO с проверкой, а не голым ALTER … IF NOT EXISTS:
--- ALTER TABLE берёт на таблицу самую строгую блокировку, даже когда колонка
--- уже есть. Файл применяется при каждом старте — в том числе вторым воркером,
--- когда первый уже отвечает на запросы, — и такая блокировка на venues, halls
--- и providers встала бы поперёк живого поиска. С проверкой сюда заходит только
--- самый первый запуск.
 -- =========================================================================
-DO $mig$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_schema = current_schema()
-           AND table_name = 'providers' AND column_name = 'hidden_by_block'
-    ) THEN
-        ALTER TABLE users     ADD COLUMN IF NOT EXISTS blocked_at CHAR(19);
-        ALTER TABLE users     ADD COLUMN IF NOT EXISTS blocked_reason TEXT;
-
-        ALTER TABLE venues    ADD COLUMN IF NOT EXISTS hidden_at CHAR(19);
-        ALTER TABLE venues    ADD COLUMN IF NOT EXISTS hidden_reason TEXT;
-        ALTER TABLE venues    ADD COLUMN IF NOT EXISTS was_active BOOLEAN;
-        ALTER TABLE venues    ADD COLUMN IF NOT EXISTS hidden_by_block BOOLEAN DEFAULT FALSE;
-
-        ALTER TABLE halls     ADD COLUMN IF NOT EXISTS hidden_at CHAR(19);
-        ALTER TABLE halls     ADD COLUMN IF NOT EXISTS hidden_reason TEXT;
-        ALTER TABLE halls     ADD COLUMN IF NOT EXISTS was_active BOOLEAN;
-        ALTER TABLE halls     ADD COLUMN IF NOT EXISTS hidden_by_block BOOLEAN DEFAULT FALSE;
-
-        ALTER TABLE providers ADD COLUMN IF NOT EXISTS hidden_at CHAR(19);
-        ALTER TABLE providers ADD COLUMN IF NOT EXISTS hidden_reason TEXT;
-        ALTER TABLE providers ADD COLUMN IF NOT EXISTS was_active BOOLEAN;
-        ALTER TABLE providers ADD COLUMN IF NOT EXISTS hidden_by_block BOOLEAN DEFAULT FALSE;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_schema = current_schema()
-           AND table_name = 'bookings' AND column_name = 'review_removed_at'
-    ) THEN
-        ALTER TABLE bookings ADD COLUMN review_removed_at CHAR(19);
-    END IF;
-END
-$mig$;
 
 CREATE TABLE IF NOT EXISTS admin_actions (
     id                SERIAL PRIMARY KEY,
@@ -505,54 +324,13 @@ CREATE TABLE IF NOT EXISTS admin_actions (
     created_at        CHAR(19) NOT NULL
 );
 
--- Журнал, созданный первой версией админки, ещё без subject_user_ids. У его
--- записей уже не узнать, чьи в них данные, — а значит, и не стереть их вместе
--- с аккаунтом. Поэтому такие записи обезличиваются сразу: что и когда сделано
--- и почему — остаётся, названия, номера и тексты отзывов — нет.
-DO $mig$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_schema = current_schema()
-           AND table_name = 'admin_actions' AND column_name = 'subject_user_ids'
-    ) THEN
-        ALTER TABLE admin_actions ADD COLUMN subject_user_ids INT[];
-        UPDATE admin_actions
-           SET target_label = NULL,
-               details = CASE WHEN action = 'review_delete' THEN NULL ELSE details END;
-    END IF;
-END
-$mig$;
 
--- Блокировка теперь всегда прячет объявления человека (services/moderation.py).
--- Раньше «Отключить» у служебного аккаунта закрывало только вход — приводим
--- такие аккаунты к общему правилу. После первого запуска подходящих строк не
--- остаётся: дальше объявления скрываются в момент блокировки.
--- Время — казахстанское (UTC+5), как пишет его сам бэк.
-UPDATE venues
-   SET was_active = is_active, is_active = FALSE, hidden_by_block = TRUE,
-       hidden_reason = 'Аккаунт владельца заблокирован',
-       hidden_at = to_char(now() AT TIME ZONE 'UTC' + interval '5 hours', 'YYYY-MM-DD"T"HH24:MI:SS')
- WHERE hidden_at IS NULL
-   AND owner_id IN (SELECT id FROM users WHERE is_blocked);
-UPDATE halls
-   SET was_active = is_active, is_active = FALSE, hidden_by_block = TRUE,
-       hidden_reason = 'Аккаунт владельца заблокирован',
-       hidden_at = to_char(now() AT TIME ZONE 'UTC' + interval '5 hours', 'YYYY-MM-DD"T"HH24:MI:SS')
- WHERE hidden_at IS NULL
-   AND venue_id IN (SELECT v.id FROM venues v JOIN users u ON u.id = v.owner_id WHERE u.is_blocked);
-UPDATE providers
-   SET was_active = is_active, is_active = FALSE, hidden_by_block = TRUE,
-       hidden_reason = 'Аккаунт владельца заблокирован',
-       hidden_at = to_char(now() AT TIME ZONE 'UTC' + interval '5 hours', 'YYYY-MM-DD"T"HH24:MI:SS')
- WHERE hidden_at IS NULL
-   AND owner_id IN (SELECT id FROM users WHERE is_blocked);
 
 
 -- =========================================================================
 -- Жалобы пользователей
 --
--- На что жалоба — target_type + target_id: зал, исполнитель, отзыв или
+-- На что жалоба — target_type + target_id: объявление, отзыв или
 --     переписка. Без внешних ключей и без четырёх отдельных колонок: жалоба
 --     должна пережить удаление объявления или отзыва (модератору ещё
 --     разбирать её), а связи тут только читаются.
@@ -686,7 +464,7 @@ CREATE TABLE IF NOT EXISTS admin_known_addresses (
 --     в коде, ни в поиске по проекту, здесь везде слово peer («собеседник»).
 -- Строка — «user_id заблокировал peer_id». Блокировка между двумя людьми, а
 --     не внутри чата: у пары бывает несколько чатов (по одному на
---     объявление), а чат зала удаляется вместе с залом — блокировка должна
+--     объявление), а чат объявления удаляется вместе с объявлением — блокировка должна
 --     это пережить.
 -- Разблокировка удаляет строку: историю блокировок не храним.
 -- guid — по нему приложение снимает блокировку из списка «Заблокированные»;

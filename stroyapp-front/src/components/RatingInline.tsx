@@ -14,7 +14,7 @@ const formatAvg = (avg: number | string) => Number(avg).toFixed(1);
  * как два непонятных числа.
  */
 export function ratingLabel(t: TFunction, avg: number | string, count: number): string {
-  return `${t('hall.reviews')}: ${formatAvg(avg)} (${count})`;
+  return `${t('listing.reviews')}: ${formatAvg(avg)} (${count})`;
 }
 
 interface RatingInlineProps {

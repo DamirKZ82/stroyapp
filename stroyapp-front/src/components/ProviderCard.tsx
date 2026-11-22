@@ -12,31 +12,12 @@ interface ProviderCardProps {
   onPress: () => void;
   onToggleFavorite?: () => void;
   isFavorite?: boolean;
-  /**
-   * Показывать ли плашку «Занято / Свободен». Без даты сервер всё равно
-   * присылает is_busy_on_date: false, и отличить «свободен в этот день» от
-   * «дату не спрашивали» может только экран поиска: showAvailability={!!date}.
-   */
-  showAvailability?: boolean;
 }
 
-/** Карточка исполнителя (ведущий, фотограф, …) в поиске и избранном. */
-export function ProviderCard({
-  item,
-  onPress,
-  onToggleFavorite,
-  isFavorite,
-  showAvailability = true,
-}: ProviderCardProps) {
+/** Карточка магазина или бригады в поиске и избранном. */
+export function ProviderCard({ item, onPress, onToggleFavorite, isFavorite }: ProviderCardProps) {
   const { t } = useTranslation();
   const lang = useLang();
-
-  // В избранном занятости нет вовсе (там нет даты) — плашку не рисуем.
-  const busy = item.is_busy_on_date;
-  const badge =
-    showAvailability && typeof busy === 'boolean'
-      ? { busy, label: busy ? t('search.busy_badge') : t('provider.free_badge') }
-      : null;
 
   const priceFrom = item.provider.price_from;
   const unit = item.provider.price_unit;
@@ -45,9 +26,14 @@ export function ProviderCard({
   const priceHint =
     priceFrom == null
       ? t('provider.price_negotiable')
-      : [t('provider.price_from_prefix'), unitLabel(t, unit)]
-          .filter(Boolean)
-          .join(' · ');
+      : [t('provider.price_from_prefix'), unitLabel(t, unit)].filter(Boolean).join(' · ');
+
+  // Позиции прайса, совпавшие с поиском: ради них человек и искал.
+  const extraLines = (item.matched_items ?? []).map((it) =>
+    it.price == null
+      ? `${it.name} — ${t('provider.price_negotiable')}`
+      : `${it.name} — ${formatPrice(it.price)} ${unitLabel(t, it.unit) ?? ''}`.trim(),
+  );
 
   return (
     <ListingCard
@@ -56,9 +42,9 @@ export function ProviderCard({
       title={item.provider.name}
       subtitle={`${dictName(item.category, lang)} · ${dictName(item.city, lang)}`}
       rating={item.rating}
-      badge={badge}
       price={priceFrom == null ? null : formatPrice(priceFrom)}
       priceHint={priceHint}
+      extraLines={extraLines}
       onPress={onPress}
       onToggleFavorite={onToggleFavorite}
       isFavorite={isFavorite}

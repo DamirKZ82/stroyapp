@@ -4,8 +4,8 @@ import { useCallback, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError, bookingsApi, dictsApi } from '@/api';
-import type { Booking, EventType } from '@/api/types';
+import { ApiError, bookingsApi } from '@/api';
+import type { Booking } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Card, Row, RowGroup, SectionLabel } from '@/components/Card';
 import { Badge, ErrorBanner, Loader } from '@/components/Feedback';
@@ -16,8 +16,7 @@ import { text, type ThemeColors } from '@/theme';
 import { useColors, useThemedStyles } from '@/theme/scheme';
 import { showThen } from '@/utils/alert';
 import { bookingStatusTone } from '@/utils/bookingStatus';
-import { formatDateHuman, formatPrice } from '@/utils/format';
-import { dictName } from '@/utils/i18nDict';
+import { formatDateHuman } from '@/utils/format';
 import { useLang } from '@/utils/lang';
 import { callPhone } from '@/utils/links';
 import { useOnTop } from '@/utils/nav';
@@ -27,7 +26,7 @@ import { formatKzPhoneDisplay } from '@/utils/phone';
 const REASON_MAX = 1000;
 
 /**
- * Заявка глазами владельца: кто, когда, на сколько гостей — и ответ на неё,
+ * Заявка глазами продавца: кто, что нужно, куда и к какому сроку — и ответ на неё,
  * подтвердить или отклонить с причиной.
  *
  * Отвечать можно только на ожидающую заявку: у остальных кнопок внизу нет,
@@ -41,7 +40,6 @@ export default function BookingScreen() {
   const { bookingGuid } = useLocalSearchParams<{ bookingGuid: string }>();
 
   const [booking, setBooking] = useState<Booking | null>(null);
-  const [eventTypes, setEventTypes] = useState<EventType[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +51,6 @@ export default function BookingScreen() {
   // на той кнопке, которую нажали, а не на обеих.
   const [action, setAction] = useState<'confirm' | 'reject' | null>(null);
 
-  const typesLoaded = useRef(false);
   // Фокус и «потянуть вниз» могут запустить два запроса сразу, а ответ на
   // запрос, ушедший до подтверждения, вернул бы заявке статус «ожидает».
   // Показываем ответ только последнего.
@@ -67,24 +64,9 @@ export default function BookingScreen() {
     const request = ++lastRequest.current;
     try {
       if (!bookingGuid) throw new Error('bookingGuid');
-      const [res, types] = await Promise.all([
-        bookingsApi.get(bookingGuid),
-        // Справочник не меняется — берём один раз, а не на каждый фокус.
-        // Без него экран работает, просто без строки «Тип мероприятия»,
-        // поэтому его ошибку глотаем: заявка важнее.
-        typesLoaded.current
-          ? null
-          : dictsApi
-              .eventTypes()
-              .then((r) => r.items)
-              .catch(() => null),
-      ]);
+      const res = await bookingsApi.get(bookingGuid);
       if (request !== lastRequest.current) return;
       setBooking(res.booking);
-      if (types) {
-        typesLoaded.current = true;
-        setEventTypes(types);
-      }
       // Ошибку снимаем после удачного ответа, а не перед запросом: иначе при
       // повторе полоса ошибки мигает.
       setError(null);
@@ -125,7 +107,7 @@ export default function BookingScreen() {
     if (!booking || action) return;
     setAction('confirm');
     try {
-      const resp = await bookingsApi.confirm(booking.guid);
+      await bookingsApi.confirm(booking.guid);
       // Запрос, ушедший до подтверждения, больше не нужен: его ответ вернул
       // бы под окно «Подтверждено» прежний статус и кнопки ответа.
       lastRequest.current += 1;
@@ -136,12 +118,7 @@ export default function BookingScreen() {
       // С экрана ушли — окно «Подтверждено» всплыло бы над чужим экраном, а
       // его OK увёл бы назад уже оттуда. Новый статус и так виден при возврате.
       if (!onTop.current) return;
-      const rejectedCount = resp.auto_rejected_count;
-      showThen(
-        t('owner.confirm_success'),
-        rejectedCount > 0 ? t('owner.confirm_auto_rejected', { count: rejectedCount }) : undefined,
-        leave,
-      );
+      showThen(t('owner.confirm_success'), undefined, leave);
     } catch (e) {
       // Окно, а не полоса вверху: при длинном комментарии экран прокручен, и
       // отказ над содержимым остался бы незамеченным.
@@ -203,9 +180,6 @@ export default function BookingScreen() {
     );
   }
 
-  const eventType = booking.event_type_id
-    ? eventTypes.find((e) => e.id === booking.event_type_id)
-    : null;
   const phone = booking.client?.phone || null;
   const pending = booking.status === 'pending';
 
@@ -241,10 +215,7 @@ export default function BookingScreen() {
 
       <Card style={styles.head}>
         <Badge label={t(`bookings.status_${booking.status}`)} tone={bookingStatusTone(booking.status)} />
-        <Text style={styles.subject}>{booking.subject.name ?? t('bookings.subject_deleted')}</Text>
-        {booking.subject.parent_name ? (
-          <Text style={styles.parent}>{booking.subject.parent_name}</Text>
-        ) : null}
+        <Text style={styles.subject}>{booking.provider?.name ?? t('bookings.subject_deleted')}</Text>
       </Card>
 
       <RowGroup>
@@ -271,13 +242,7 @@ export default function BookingScreen() {
           <Fact label={t('owner.booking_phone')} value="—" />
         )}
         <Fact label={t('owner.booking_date')} value={formatDateHuman(booking.event_date, lang)} />
-        <Fact label={t('owner.booking_guests')} value={String(booking.guests_count)} />
-        {eventType ? (
-          <Fact label={t('owner.booking_event_type')} value={dictName(eventType, lang)} />
-        ) : null}
-        {booking.price_at_booking != null ? (
-          <Fact label={t('owner.booking_price')} value={formatPrice(booking.price_at_booking)} />
-        ) : null}
+        <Fact label={t('owner.booking_address')} value={booking.address || '—'} />
       </RowGroup>
 
       {booking.comment ? (
@@ -364,7 +329,6 @@ const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     head: { gap: 6 },
     subject: { fontSize: text.section, fontWeight: '700', color: colors.text },
-    parent: { fontSize: text.caption, color: colors.muted },
     // Ширина ограничена, чтобы длинное значение не выдавило подпись совсем.
     factValue: {
       fontSize: text.body,

@@ -1,8 +1,9 @@
 import { apiClient } from './client';
+import type { PriceUnit } from './types';
 
-/** Унифицированный subject чата — зал или исполнитель. */
+/** Объявление, о котором переписка. */
 export interface ChatSubject {
-  type: 'hall' | 'provider';
+  type: 'provider';
   guid: string | null;
   name: string | null;
   main_thumb: string | null;
@@ -14,23 +15,14 @@ export interface ChatListItem {
   guid: string;
   /** Унифицированный subject (есть всегда). */
   subject: ChatSubject;
-  /** Заполнено, если чат привязан к залу. */
-  hall: {
-    guid: string;
-    name: string;
-    main_thumb: string | null;
-    main_photo: string | null;
-    price_weekday: number | null;
-    price_weekend: number | null;
-  } | null;
-  /** Заполнено, если чат привязан к исполнителю. */
+  /** Объявление (магазин или бригада); null, если удалено. */
   provider: {
     guid: string;
     name: string;
     main_thumb: string | null;
     main_photo: string | null;
     price_from: number | null;
-    price_unit: 'event' | 'hour' | 'person' | 'day' | null;
+    price_unit: PriceUnit | null;
     category_code: string | null;
   } | null;
   /** Заявка — опционально. null если юзер ещё не подал заявку */
@@ -47,7 +39,7 @@ export interface ChatListItem {
   /** true — последнее сообщение прочитано получателем (имеет смысл только если last_message_is_mine=true) */
   last_message_read: boolean | null;
   unread_count: number;
-  /** true — я владелец зала в этом чате, false — я клиент-заказчик */
+  /** true — я владелец объявления в этом чате, false — я клиент */
   is_owner: boolean;
   /**
    * true — этого собеседника заблокировал я сам. Сервер старше блокировок
@@ -106,18 +98,7 @@ export const chatsApi = {
     return data;
   },
 
-  /**
-   * Создать (или получить существующий) чат с владельцем зала.
-   * Используется кнопкой "Написать" на карточке зала.
-   */
-  async openWithHall(hallGuid: string): Promise<{ chat_guid: string }> {
-    const { data } = await apiClient.post<{ chat_guid: string }>(
-      `/halls/${hallGuid}/chat`,
-    );
-    return data;
-  },
-
-  /** Создать (или получить) чат с исполнителем. Кнопка "Написать" на карточке C07. */
+  /** Создать (или получить) чат по объявлению. Кнопка «Написать» на карточке. */
   async openWithProvider(providerGuid: string): Promise<{ chat_guid: string }> {
     const { data } = await apiClient.post<{ chat_guid: string }>(
       `/providers/${providerGuid}/chat`,

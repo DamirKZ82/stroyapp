@@ -29,7 +29,7 @@ from libs.admin_query import MAX_PAGE, like, limit_offset, paged, phone_match, w
 from libs.common import fit_to_sql
 from libs.date import KZ_TZ, add_minutes, get_timestamp_now
 from services.account import purge_users
-from services.admin_listings import fetch_halls, fetch_providers
+from services.admin_listings import fetch_providers
 from services.moderation import block_user, log_action, unblock_user
 from services.terms import TERMS_VERSION
 
@@ -41,8 +41,7 @@ SERIES_DAYS = 14
 USER_FILTERS = {
     'all': None,
     'blocked': 'u.is_blocked',
-    'owners': """(EXISTS (SELECT 1 FROM venues v WHERE v.owner_id = u.id)
-                  OR EXISTS (SELECT 1 FROM providers p WHERE p.owner_id = u.id))""",
+    'owners': 'EXISTS (SELECT 1 FROM providers p WHERE p.owner_id = u.id)',
     'clients': 'EXISTS (SELECT 1 FROM bookings b WHERE b.client_id = u.id)',
     'admins': 'u.is_admin',
     'service': 'u.is_service',
@@ -56,7 +55,7 @@ _USER_FIELDS = """u.id, u.phone, u.full_name, u.language, u.is_blocked, u.blocke
 
 # Что удалилось вместе с аккаунтом — для журнала (ключи из purge_users).
 _REMOVED = (
-    ('venues', 'заведений'), ('halls', 'залов'), ('providers', 'объявлений исполнителя'),
+    ('providers', 'объявлений'),
     ('bookings', 'заявок'), ('reviews', 'отзывов'), ('chats', 'переписок'), ('favorites', 'избранного'),
     ('complaints', 'жалоб'), ('peer_blocks', 'блокировок собеседников'),
 )
@@ -91,13 +90,12 @@ async def stats(admin=Depends(auth_admin)):
             (SELECT COUNT(*) FROM users)::int AS users_total,
             (SELECT COUNT(*) FROM users WHERE created_at >= {week})::int AS users_week,
             (SELECT COUNT(*) FROM users WHERE is_blocked)::int AS users_blocked,
-            (SELECT COUNT(*) FROM venues)::int AS venues_total,
-            (SELECT COUNT(*) FROM halls)::int AS halls_total,
-            (SELECT COUNT(*) FROM halls h JOIN venues v ON v.id = h.venue_id
-              WHERE h.is_active AND v.is_active)::int AS halls_public,
-            (SELECT COUNT(*) FROM halls h JOIN venues v ON v.id = h.venue_id
-              WHERE h.hidden_at IS NOT NULL OR v.hidden_at IS NOT NULL)::int AS halls_hidden,
             (SELECT COUNT(*) FROM providers)::int AS providers_total,
+            (SELECT COUNT(*) FROM providers p JOIN categories c ON c.id = p.category_id
+              WHERE c.kind = 'material')::int AS shops_total,
+            (SELECT COUNT(*) FROM providers p JOIN categories c ON c.id = p.category_id
+              WHERE c.kind = 'service')::int AS crews_total,
+            (SELECT COUNT(*) FROM provider_items)::int AS items_total,
             (SELECT COUNT(*) FROM providers WHERE is_active)::int AS providers_public,
             (SELECT COUNT(*) FROM providers WHERE hidden_at IS NOT NULL)::int AS providers_hidden,
             (SELECT COUNT(*) FROM bookings)::int AS bookings_total,
@@ -135,12 +133,12 @@ async def stats(admin=Depends(auth_admin)):
         return {r['day']: r['n'] for r in found}
 
     users, bookings = await per_day('users'), await per_day('bookings')
-    halls, providers = await per_day('halls'), await per_day('providers')
+    providers = await per_day('providers')
     series = [{
         'day': d,
         'users': users.get(d, 0),
         'bookings': bookings.get(d, 0),
-        'listings': halls.get(d, 0) + providers.get(d, 0),
+        'listings': providers.get(d, 0),
     } for d in days]
 
     return {'totals': totals, 'series': series}
@@ -169,8 +167,6 @@ async def list_users(
 
     items = await query_db(f"""
         SELECT {_USER_FIELDS},
-               (SELECT COUNT(*) FROM halls h JOIN venues v ON v.id = h.venue_id
-                 WHERE v.owner_id = u.id)::int AS halls,
                (SELECT COUNT(*) FROM providers p WHERE p.owner_id = u.id)::int AS providers,
                (SELECT COUNT(*) FROM bookings b WHERE b.client_id = u.id)::int AS bookings
         FROM users u
@@ -203,20 +199,17 @@ async def get_user(user_id: int, admin=Depends(auth_admin)):
     uid = fit_to_sql(user_id)
 
     bookings = await query_db(f"""
-        SELECT b.id, b.status, b.event_date, b.guests_count, b.price_at_booking, b.created_at,
-               COALESCE(h.name, p.name) AS subject,
-               CASE WHEN b.hall_id IS NOT NULL THEN 'hall' ELSE 'provider' END AS subject_type
+        SELECT b.id, b.status, b.event_date, b.address, b.created_at,
+               p.name AS subject
         FROM bookings b
-        LEFT JOIN halls h ON h.id = b.hall_id
         LEFT JOIN providers p ON p.id = b.provider_id
         WHERE b.client_id = {uid}
         ORDER BY b.id DESC
         LIMIT 20
     """)
     reviews = await query_db(f"""
-        SELECT r.id, r.rating, r.text, r.created_at, COALESCE(h.name, p.name) AS subject
+        SELECT r.id, r.rating, r.text, r.created_at, p.name AS subject
         FROM reviews r
-        LEFT JOIN halls h ON h.id = r.hall_id
         LEFT JOIN providers p ON p.id = r.provider_id
         WHERE r.client_id = {uid}
         ORDER BY r.id DESC
@@ -257,7 +250,6 @@ async def get_user(user_id: int, admin=Depends(auth_admin)):
         'user': user,
         'terms': {'current': TERMS_VERSION, 'accepted': terms[0] if terms else None},
         'admin_access': access[0] if access else None,
-        'halls': await fetch_halls([f'v.owner_id = {uid}']),
         'providers': await fetch_providers([f'p.owner_id = {uid}']),
         'bookings': bookings,
         'reviews': reviews,

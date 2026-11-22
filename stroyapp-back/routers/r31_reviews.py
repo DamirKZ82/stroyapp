@@ -1,8 +1,8 @@
 """
 Отзывы.
 
-    POST /reviews                    — создать отзыв (клиент, только после прошедшей подтверждённой брони)
-    GET  /halls/{guid}/reviews       — публичный список отзывов зала (имя клиента маскируется)
+    POST /reviews                    — создать отзыв (клиент, по принятой заявке, начиная с её даты)
+    GET  /providers/{guid}/reviews   — публичный список отзывов объявления (имя клиента маскируется)
     POST /reviews/{guid}/reply       — ответ владельца (можно перезаписывать)
 
 По этапу 5 клиент НЕ может редактировать/удалять свой отзыв.
@@ -18,7 +18,7 @@ from handlers.h01_errors import WarnException
 from handlers.h03_auth import auth_user
 from libs.common import fit_to_sql, new_guid
 from libs.date import get_date_today, get_timestamp_now
-from libs.ownership import get_hall_by_guid, get_provider_by_guid
+from libs.ownership import get_provider_by_guid
 from libs.text_filter import Clean
 
 
@@ -90,7 +90,7 @@ def _mask_name(full_name: Optional[str]) -> str:
 async def create_review(body: ReviewCreateBody, user=Depends(auth_user)):
     # Найдём бронь и проверим условия
     rows = await query_db(f"""
-        SELECT b.id, b.hall_id, b.provider_id, b.client_id, b.status, b.event_date,
+        SELECT b.id, b.provider_id, b.client_id, b.status, b.event_date,
                b.review_removed_at
         FROM bookings b
         WHERE b.guid = {fit_to_sql(body.booking_guid)}
@@ -102,9 +102,9 @@ async def create_review(body: ReviewCreateBody, user=Depends(auth_user)):
     if booking['client_id'] != user['id']:
         raise WarnException(403, 'Недостаточно прав')
     if booking['status'] != 'confirmed':
-        raise WarnException(400, 'Отзыв можно оставить только по подтверждённой заявке')
-    if booking['event_date'] >= get_date_today():
-        raise WarnException(400, 'Отзыв можно оставить только после мероприятия')
+        raise WarnException(400, 'Отзыв можно оставить только по принятой заявке')
+    if booking['event_date'] > get_date_today():
+        raise WarnException(400, 'Отзыв можно оставить, когда наступит дата заявки')
 
     # Не более одного отзыва на бронь
     existing = await query_db(f"""
@@ -116,26 +116,20 @@ async def create_review(body: ReviewCreateBody, user=Depends(auth_user)):
         # Иначе удалённый отзыв можно было бы тут же написать заново.
         raise WarnException(403, f"Отзыв по этой заявке удалён модератором. Вопросы — на {config['support_email']}")
 
-    # Отзыв полиморфен: привязан к тому же subject, что и бронь.
-    if booking['hall_id'] is not None:
-        subject_col, subject_id = 'hall_id', booking['hall_id']
-    else:
-        subject_col, subject_id = 'provider_id', booking['provider_id']
-
     now = get_timestamp_now()
     guid = new_guid()
     rows = await query_db(f"""
-        INSERT INTO reviews (guid, booking_id, {subject_col}, client_id, rating, text, created_at)
+        INSERT INTO reviews (guid, booking_id, provider_id, client_id, rating, text, created_at)
         VALUES (
             {fit_to_sql(guid)},
             {fit_to_sql(booking['id'])},
-            {fit_to_sql(subject_id)},
+            {fit_to_sql(booking['provider_id'])},
             {fit_to_sql(user['id'])},
             {fit_to_sql(body.rating)},
             {fit_to_sql(body.text)},
             {fit_to_sql(now)}
         )
-        RETURNING id, guid, hall_id, provider_id, rating, text,
+        RETURNING id, guid, provider_id, rating, text,
                   owner_reply, owner_reply_at, created_at
     """)
     return {'review': rows[0]}
@@ -177,33 +171,21 @@ async def _reviews_payload(subject_col: str, subject_id: int) -> dict:
     }
 
 
-@router.get('/halls/{guid}/reviews')
-async def hall_reviews(guid: str):
-    """Публичный список отзывов зала."""
-    hall = await get_hall_by_guid(guid)
-    if hall is None:
-        raise WarnException(404, 'Зал не найден')
-    return await _reviews_payload('hall_id', hall['id'])
-
-
 @router.get('/providers/{guid}/reviews')
 async def provider_reviews(guid: str):
-    """Публичный список отзывов исполнителя."""
+    """Публичный список отзывов объявления."""
     provider = await get_provider_by_guid(guid)
     if provider is None:
-        raise WarnException(404, 'Исполнитель не найден')
+        raise WarnException(404, 'Объявление не найдено')
     return await _reviews_payload('provider_id', provider['id'])
 
 
 @router.post('/reviews/{guid}/reply')
 async def reply_to_review(guid: str, body: ReviewReplyBody, user=Depends(auth_user)):
     rows = await query_db(f"""
-        SELECT r.id,
-               COALESCE(v.owner_id, p.owner_id) AS owner_id
+        SELECT r.id, p.owner_id
         FROM reviews r
-        LEFT JOIN halls h     ON h.id = r.hall_id
-        LEFT JOIN venues v    ON v.id = h.venue_id
-        LEFT JOIN providers p ON p.id = r.provider_id
+        JOIN providers p ON p.id = r.provider_id
         WHERE r.guid = {fit_to_sql(guid)}
     """)
     if not rows:

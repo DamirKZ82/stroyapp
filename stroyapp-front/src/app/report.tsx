@@ -23,7 +23,6 @@ const OTHER_COMMENT_MIN = 5;
 // Причины в порядке показа. Набор у каждого вида жалобы свой и повторяет
 // серверный: причину не из набора сервер отклонит.
 const REASONS: Record<ComplaintTarget, readonly ComplaintReason[]> = {
-  hall: ['false_info', 'photos', 'fraud', 'offensive', 'spam', 'other'],
   provider: ['false_info', 'photos', 'fraud', 'offensive', 'spam', 'other'],
   review: ['offensive', 'spam', 'false_info', 'other'],
   chat: ['offensive', 'fraud', 'spam', 'other'],
@@ -40,20 +39,19 @@ const REASON_KEY: Record<ComplaintReason, string> = {
 };
 
 const ABOUT_KEY: Record<ComplaintTarget, string> = {
-  hall: 'report.about_listing',
   provider: 'report.about_listing',
   review: 'report.about_review',
   chat: 'report.about_chat',
 };
 
 const isTarget = (value: string | undefined): value is ComplaintTarget =>
-  value === 'hall' || value === 'provider' || value === 'review' || value === 'chat';
+  value === 'provider' || value === 'review' || value === 'chat';
 
 /**
  * Жалоба на объявление, отзыв или собеседника: причина из списка и, если
  * есть что добавить, комментарий.
  *
- * Открывается с карточки зала и исполнителя, из отзыва и из чата. На что
+ * Открывается с карточки объявления, из отзыва и из чата. На что
  * жалоба, приходит параметрами; название — только чтобы показать человеку,
  * что он не ошибся экраном.
  */

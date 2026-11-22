@@ -1,0 +1,116 @@
+<!doctype html>
+<!-- translate="no": модератор должен видеть названия, отзывы и жалобы так,
+     как их написали, а не в переводе браузера. -->
+<html lang="ru" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="google" content="notranslate">
+<!-- Цвет панели браузера — как у шапки страницы, в обеих темах. -->
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1f1e" media="(prefers-color-scheme: dark)">
+<title>Админка — ToiApp</title>
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<!-- Первая остановка Tab: мимо шапки и разделов сразу к содержимому. -->
+<button id="skip" class="skip" type="button" hidden>К содержимому</button>
+
+<header class="top">
+  <h1 class="brand"><span class="logo" aria-hidden="true">T</span>ToiApp · админка</h1>
+  <div id="who" class="who" hidden>
+    <span id="who-name" class="muted"></span>
+    <button id="logout" class="btn ghost small" type="button">Выйти</button>
+  </div>
+</header>
+
+<!-- Вход. Формы настоящие, с именами полей: так менеджер паролей в браузере
+     предлагает сохранить пароль и подставляет его в следующий раз. Отправляет
+     их скрипт — сама страница никуда не уходит. -->
+<section id="login" class="narrow" hidden>
+  <!-- Обычный вход: номер и пароль -->
+  <form id="pass-form" class="panel">
+    <h2>Вход</h2>
+    <label for="login-phone">Телефон</label>
+    <input id="login-phone" name="username" type="tel" autocomplete="username" spellcheck="false" placeholder="+7 700 000 00 00">
+    <label for="login-password">Пароль</label>
+    <input id="login-password" name="password" type="password" autocomplete="current-password">
+    <div class="row">
+      <button id="login-submit" class="btn" type="submit">Войти</button>
+    </div>
+    <div id="login-error" class="error" role="alert"></div>
+    <p class="muted small aside">Первый вход или забыли пароль?
+      <button id="to-sms" class="link" type="button">Подтвердить номер по SMS</button></p>
+  </form>
+
+  <!-- Первый вход и смена пароля: код из SMS, затем свой пароль -->
+  <form id="sms-form" class="panel" hidden>
+    <h2>Подтверждение по SMS</h2>
+    <p class="muted">Для первого входа и на случай, когда пароль забыт. После кода вы зададите пароль — дальше входить по номеру и паролю, без SMS.</p>
+    <label for="phone">Телефон</label>
+    <input id="phone" name="phone" type="tel" autocomplete="tel" spellcheck="false" placeholder="+7 700 000 00 00">
+    <div id="code-block" hidden>
+      <!-- «Если назначен»: чужому номеру сервер отвечает так же, но SMS не шлёт —
+           иначе по ответу было бы видно, кто у нас админ. -->
+      <p class="muted small">Если этот номер назначен администратором, на него придёт SMS с кодом из 6 цифр. Код действует 5 минут.</p>
+      <label for="code">Код из SMS</label>
+      <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" maxlength="6" placeholder="000000">
+    </div>
+    <div class="row">
+      <button id="request" class="btn" type="button">Получить код</button>
+      <button id="verify" class="btn" type="submit" hidden>Продолжить</button>
+    </div>
+    <div id="sms-error" class="error" role="alert"></div>
+    <p class="muted small aside"><button id="to-pass" class="link" type="button">Войти по паролю</button></p>
+  </form>
+</section>
+
+<!-- Пароль для админки: сюда попадают после кода из SMS -->
+<section id="setpass" class="narrow" hidden>
+  <form id="setpass-form" class="panel">
+    <h2 id="setpass-title">Задайте пароль</h2>
+    <p id="setpass-text" class="muted"></p>
+    <!-- Номер скрытым полем: по нему менеджер паролей поймёт, от какого входа этот пароль. -->
+    <input id="setpass-phone" name="username" type="text" autocomplete="username" hidden>
+    <label for="new-password">Новый пароль</label>
+    <input id="new-password" name="new-password" type="password" autocomplete="new-password">
+    <label for="new-password2">Ещё раз</label>
+    <input id="new-password2" name="new-password2" type="password" autocomplete="new-password">
+    <p class="muted small">Не короче 8 символов и не из одних цифр. Пароль знаете только вы: другие админы его не видят и сменить за вас не могут.</p>
+    <div class="row">
+      <button id="setpass-submit" class="btn" type="submit">Сохранить и войти</button>
+    </div>
+    <div id="setpass-error" class="error" role="alert"></div>
+  </form>
+</section>
+
+<!-- Не админ -->
+<section id="denied" class="narrow" hidden>
+  <div class="panel">
+    <p><strong>Нет доступа.</strong> Этот номер не администратор.</p>
+    <p class="muted">Права выдаёт действующий администратор: раздел «Пользователи» → «Добавить админа».</p>
+  </div>
+</section>
+
+<!-- Сервер не ответил -->
+<section id="offline" class="narrow" hidden>
+  <div class="panel">
+    <p><strong>Не удалось открыть админку.</strong> <span id="offline-text"></span></p>
+    <p class="muted">Вход сохранён — пароль вводить заново не придётся.</p>
+    <div class="row"><button id="retry" class="btn" type="button">Повторить</button></div>
+  </div>
+</section>
+
+<!-- Админка -->
+<div id="app" hidden>
+  <nav id="tabs" class="tabs" aria-label="Разделы"></nav>
+  <main id="view" class="view" tabindex="-1"></main>
+</div>
+
+<div id="toast" class="toast" role="status" popover="manual"></div>
+
+<script src="/admin/admin.js"></script>
+</body>
+</html>

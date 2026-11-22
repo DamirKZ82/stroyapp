@@ -1,0 +1,361 @@
+/* Админка ToiApp. Без сборки и без внешних файлов: страница должна открываться
+   с одного сервера и не тянуть ничего со стороны. */
+
+:root {
+  color-scheme: light dark;
+  --brand: #1F7A4F;
+  --brand-ink: #fff;
+  --brand-soft: #e3f1ea;
+  --text: #1a1a1a;
+  --muted: #666d69;
+  --bg: #f5f7f6;
+  --surface: #fff;
+  --line: #dfe5e2;
+  --danger: #b3261e;
+  --danger-soft: #fbe9e7;
+  --warn: #9a5b00;
+  --warn-soft: #fdf1dc;
+  --ok: #1f7a4f;
+  --ok-soft: #e3f1ea;
+  --shadow: 0 8px 30px rgba(0, 0, 0, .18);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --brand: #4dbb85;
+    --brand-ink: #0b1f15;
+    --brand-soft: #173326;
+    --text: #eaeaea;
+    --muted: #9aa3a0;
+    --bg: #121413;
+    --surface: #1c1f1e;
+    --line: #2c3331;
+    --danger: #f2b8b5;
+    --danger-soft: #3a1f1d;
+    --warn: #f2c27a;
+    --warn-soft: #3a2c14;
+    --ok: #7fd3a8;
+    --ok-soft: #173326;
+    --shadow: 0 8px 30px rgba(0, 0, 0, .6);
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+/* Отклик на касание — своего цвета, а не серый по умолчанию. */
+html { -webkit-tap-highlight-color: rgba(31, 122, 79, .18); }
+/* Без задержки на «а вдруг двойное касание»: приближать здесь нечего. */
+a, button, input, select, textarea, label, .item.click { touch-action: manipulation; }
+
+body {
+  margin: 0;
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+h2 { font-size: 20px; margin: 0 0 12px; text-wrap: balance; }
+/* Заголовок раздела с действием справа от него. */
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.head h2 { margin: 0; }
+h3 { font-size: 15px; margin: 20px 0 8px; text-wrap: balance; }
+p { margin: 8px 0; }
+code { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+a { color: var(--brand); }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.nowrap { white-space: nowrap; }
+.grow { flex: 1; min-width: 0; }
+.right { text-align: right; }
+
+/* ---------- шапка и разделы ---------- */
+
+.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; margin: 0; font-weight: 600; font-size: 17px; white-space: nowrap; }
+.logo {
+  display: inline-grid; place-items: center;
+  width: 28px; height: 28px; border-radius: 7px;
+  background: #1F7A4F; color: #fff; font-weight: 800;
+}
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.who .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tabs {
+  display: flex; gap: 4px;
+  padding: 8px 12px 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  /* На узком экране разделы листаются пальцем; полоса прокрутки под ними
+     только съедала бы место. Открытый раздел подкручивается в видимую часть сам. */
+  scrollbar-width: none;
+  position: sticky; top: 0; z-index: 5;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: none;
+  padding: 9px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none; white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab[aria-current="page"] { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+
+/* scroll-margin: при переходе «К содержимому» верх не уходит под разделы. */
+.view { max-width: 1100px; margin: 0 auto; padding: 20px 16px 64px; scroll-margin-top: 48px; }
+/* Фокус сюда ставит только кнопка «К содержимому» — рамка вокруг всей страницы ни к чему. */
+.view:focus { outline: none; }
+
+/* Видна, только пока на ней фокус. */
+.skip {
+  position: absolute; top: 8px; left: 8px; z-index: 30;
+  padding: 9px 14px; border: 0; border-radius: 7px;
+  background: var(--brand); color: var(--brand-ink);
+  font: inherit; font-weight: 500; cursor: pointer;
+  transform: translateY(-200%);
+}
+.skip:focus-visible { transform: none; }
+.narrow { max-width: 440px; margin: 0 auto; padding: 24px 16px; }
+
+/* ---------- кирпичики ---------- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+input, select, textarea {
+  width: 100%;
+  font: inherit;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+}
+textarea { min-height: 84px; resize: vertical; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--brand); outline-offset: 1px;
+}
+/* Внутри полосы разделов и списков рамку снаружи обрезал бы край — рисуем её внутрь. */
+.tab:focus-visible, .item a:focus-visible, .item button:focus-visible, .card:focus-visible { outline-offset: -2px; }
+a:focus-visible, .disclose:focus-visible { border-radius: 4px; }
+/* …но карточка и раздел остаются своей формы. */
+a.card:focus-visible { border-radius: 10px; }
+.tab:focus-visible { border-radius: 0; }
+
+.btn {
+  font: inherit; font-weight: 500;
+  padding: 9px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
+  cursor: pointer;
+}
+.btn.ghost { background: transparent; color: var(--brand); }
+.btn.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+.btn.danger.solid { background: var(--danger); color: var(--surface); }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: default; }
+/* Кнопка, которая выглядит ссылкой: действие внутри строки текста. Отступ
+   сверху и снизу — только чтобы в неё было легче попасть пальцем. */
+.link {
+  padding: 6px 0; border: 0; background: none;
+  color: var(--brand); font: inherit; text-decoration: underline; cursor: pointer;
+}
+/* Под палец: кнопки не ниже 44px. */
+@media (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn.small { min-height: 36px; }
+  .x { min-width: 44px; min-height: 44px; }
+}
+.aside { margin: 16px 0 0; }
+/* Наведение — только там, где есть указатель: на телефоне оно «залипало» бы после касания. */
+@media (hover: hover) {
+  .btn:not(:disabled):hover { filter: brightness(.92); }
+  .btn.ghost:not(:disabled):hover { filter: none; background: var(--brand-soft); }
+  .btn.danger:not(.solid):not(:disabled):hover { filter: none; background: var(--danger-soft); }
+  .x:hover { color: var(--text); }
+}
+.btn:not(:disabled):active { filter: brightness(.85); }
+.row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+/* Подпись с галочкой: текст обычного цвета, сама галочка — своего размера,
+   а не на всю ширину, как поля. */
+label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; color: var(--text); }
+label.check input { width: auto; margin-top: 3px; flex: none; }
+.error { color: var(--danger); font-size: 13px; margin-top: 8px; min-height: 1em; }
+
+.badge {
+  display: inline-block;
+  font-size: 12px; line-height: 1.3;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg); color: var(--muted);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.badge.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.badge.bad { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.badge.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+
+/* ---------- обзор ---------- */
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+}
+/* Карточка-ссылка выглядит как карточка, а не как ссылка. */
+a.card { display: block; color: inherit; text-decoration: none; }
+.card .num { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.card .cap { color: var(--muted); font-size: 13px; }
+.card .sub { font-size: 13px; margin-top: 6px; }
+.card.alert { border-color: var(--danger); }
+.card.click { cursor: pointer; }
+.card.click:hover { border-color: var(--brand); }
+
+.chart { display: flex; align-items: flex-end; gap: 4px; height: 90px; margin-top: 8px; }
+.chart .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+.chart .bar { width: 100%; min-height: 2px; background: var(--brand); border-radius: 3px 3px 0 0; opacity: .85; }
+.chart .day { font-size: 10px; color: var(--muted); margin-top: 3px; }
+.chart .val { font-size: 10px; color: var(--muted); }
+
+/* ---------- списки ---------- */
+
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.toolbar input[type="search"] { flex: 2 1 220px; }
+.toolbar select { flex: 1 1 150px; width: auto; }
+.count { color: var(--muted); font-size: 13px; margin: 0 0 8px; font-variant-numeric: tabular-nums; }
+
+.list { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.item {
+  display: flex; gap: 12px; align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+.item:first-child { border-top: 0; }
+.item.click { cursor: pointer; }
+.item.click:hover { background: var(--bg); }
+/* Длинный список: строки за краем экрана браузер не раскладывает и не рисует,
+   пока до них не долистали. 44px — прикидка высоты, дальше он запомнит настоящую. */
+.list > .item { content-visibility: auto; contain-intrinsic-size: auto 44px; }
+.item .title { font-weight: 600; overflow-wrap: anywhere; }
+/* Заголовок строки — ссылка, но выглядит заголовком: подчёркивание появляется
+   при наведении на строку. */
+.item.click .title a { color: inherit; text-decoration: none; }
+.item.click:hover .title a { text-decoration: underline; }
+/* Кнопка, раскрывающая подробности записи журнала: выглядит как заголовок строки. */
+.disclose {
+  display: block; width: 100%; padding: 0; border: 0;
+  background: none; color: inherit; font: inherit; font-weight: 600;
+  text-align: left; cursor: pointer;
+}
+.disclose::before { content: '▸ '; color: var(--muted); }
+.disclose[aria-expanded="true"]::before { content: '▾ '; }
+.item .meta { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.item .side { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.item .side:empty { display: none; }
+.thumb {
+  flex: none; width: 64px; height: 48px; border-radius: 6px;
+  background: var(--bg) center/cover no-repeat;
+  border: 1px solid var(--line);
+}
+img.thumb { object-fit: cover; }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+.more { display: flex; justify-content: center; margin-top: 12px; }
+.pre {
+  margin: 8px 0 0; padding: 10px;
+  background: var(--bg); border-radius: 7px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 320px; overflow: auto;
+}
+.quote { margin: 4px 0 0; padding-left: 10px; border-left: 3px solid var(--line); overflow-wrap: anywhere; }
+
+/* ---------- окно ---------- */
+
+.dialog {
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  /* Долистали окно до конца — страница под ним не едет следом. */
+  overscroll-behavior: contain;
+  /* Поле, на которое перешли Tab, не прячется под закреплённые шапку и низ окна. */
+  scroll-padding: 64px 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.dialog.slim { width: min(440px, calc(100vw - 24px)); }
+.dialog::backdrop { background: rgba(0, 0, 0, .45); }
+.dialog-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
+}
+.dialog-head h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.dialog-body { padding: 4px 16px 16px; }
+.dialog-foot {
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+  padding: 12px 16px; border-top: 1px solid var(--line);
+  position: sticky; bottom: 0; background: var(--surface);
+}
+.x { border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; padding: 2px 6px; }
+
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 12px 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.note { padding: 10px 12px; border-radius: 8px; background: var(--danger-soft); color: var(--danger); margin: 12px 0; }
+
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 8px 0; }
+.photo { position: relative; aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden; background: var(--bg); border: 1px solid var(--line); }
+.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Ссылка занимает всю плитку, рамка фокуса — внутрь: снаружи её обрезал бы край плитки. */
+.photo a { display: block; height: 100%; }
+.photo a:focus-visible { outline-offset: -2px; }
+.photo button {
+  position: absolute; top: 4px; right: 4px;
+  border: 0; border-radius: 6px; padding: 3px 7px;
+  background: rgba(0, 0, 0, .65); color: #fff; font-size: 12px; cursor: pointer;
+}
+
+.code {
+  font: 600 20px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Показывается как popover — в верхнем слое, поверх открытых окон. Сброс
+   inset, margin, border и overflow — от стилей, которые браузер даёт popover. */
+.toast {
+  position: fixed; inset: auto auto 24px 50%; transform: translateX(-50%);
+  margin: 0; border: 0; overflow: visible;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px; border-radius: 8px;
+  background: #1a1a1a; color: #fff;
+  box-shadow: var(--shadow); z-index: 20;
+}
+.toast.bad { background: #b3261e; }
+
+@media (max-width: 560px) {
+  /* Поле мельче 16px Safari на iPhone при фокусе приближает — и страница «уезжает». */
+  input, select, textarea { font-size: 16px; }
+  .who .muted { display: none; }
+  .item { align-items: flex-start; flex-wrap: wrap; }
+  .item .side { flex-direction: row; align-items: center; width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  .facts { grid-template-columns: 1fr; gap: 0; }
+  .facts dt { margin-top: 8px; font-size: 13px; }
+}

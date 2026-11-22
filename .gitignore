@@ -1,0 +1,16 @@
+
+# Локальные настройки Claude Code
+.claude/
+
+# Ключи подписи / App Store Connect API
+*.p8
+*.p12
+*.mobileprovision
+
+# Личные скриншоты (переписка), в репозиторий не кладём
+Скрины/
+
+# Секреты и данные сервера: лежат рядом с кодом в /opt/toyhana, в git им не место
+.env
+certbot/
+backups/

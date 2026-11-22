@@ -1,0 +1,67 @@
+name: iOS Build & TestFlight
+
+# Только вручную: сборка расходует лимиты EAS, а каждая загрузка
+# занимает номер билда в App Store Connect.
+on:
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: 'Загрузить готовый билд в TestFlight'
+        type: boolean
+        default: true
+      profile:
+        description: 'EAS build profile'
+        type: choice
+        options: [production, preview]
+        default: production
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: toiapp-front
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: toiapp-front/package-lock.json
+
+      - name: Set up EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Сборка идёт на macOS-раннерах Expo, свой Mac не нужен.
+      # Подпись (Distribution Certificate, Provisioning Profile, APNs key)
+      # берётся из EAS credentials — их надо один раз создать локально,
+      # см. docs/TESTFLIGHT.md.
+      - name: Build iOS
+        run: eas build --platform ios --profile ${{ inputs.profile }} --non-interactive --wait
+
+      - name: Submit to TestFlight
+        if: inputs.submit && inputs.profile == 'production'
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ github.workspace }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          # Ключ App Store Connect лежит в секрете base64, на диск
+          # кладём только на время шага — раннер одноразовый.
+          printf '%s' "$ASC_API_KEY_BASE64" | base64 -d > "$EXPO_ASC_API_KEY_PATH"
+          trap 'rm -f "$EXPO_ASC_API_KEY_PATH"' EXIT
+          eas submit --platform ios --latest --non-interactive

@@ -1,0 +1,33 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+.env
+.env.local
+
+# Expo / native
+/android
+/ios
+expo-env.d.ts
+.kotlin/
+*.tsbuildinfo
+.metro-health-check*
+
+# IDE
+.idea/
+
+# Сырые снимки экранов для скриншотов в магазины: пересобираются скриптом
+assets/store/raw/
+assets/store/preview/
+# Привязано к локальной БД одной машины
+scripts/local/

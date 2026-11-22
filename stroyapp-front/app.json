@@ -1,0 +1,104 @@
+{
+  "expo": {
+    "name": "ToiApp",
+    "slug": "toiapp",
+    "scheme": "toiapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/0ae21cc4-5fc4-4465-adf3-171d9f95268d"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "kz.toiapp.app",
+      "icon": "./assets/icon-ios.png",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Чтобы показать залы и исполнителей в вашем городе",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "kz.toiapp.app",
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "resize",
+      "predictiveBackGestureEnabled": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1F7A4F"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1F7A4F",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 120
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": [
+              "ru",
+              "kk"
+            ]
+          }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Чтобы показать залы и исполнителей в вашем городе",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": "Приложение не использует данные о движении. Доступ к ним может запросить только встроенный модуль геолокации."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1F7A4F",
+          "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Чтобы вы могли добавлять фото в свои объявления",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-image",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "https://api.toiapp.kz",
+      "eas": {
+        "projectId": "0ae21cc4-5fc4-4465-adf3-171d9f95268d"
+      }
+    },
+    "locales": {
+      "ru": "./locales/ru.json",
+      "kk": "./locales/kk.json"
+    }
+  }
+}

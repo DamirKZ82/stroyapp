@@ -6,14 +6,13 @@
     пароля админки), он пишется в консоль.
   - prod: реальный HTTP к Mobizon API.
 
-Конфиг (из .env):
-  MOBIZON_API_KEY  — ключ из ЛК Mobizon (~256 hex). Без него отправка отключена.
-  MOBIZON_SENDER   — подпись отправителя (опционально). Если зарегистрирована —
+Конфиг (config['sms'], задаётся в админке → «Настройки»; запасной вариант — .env):
+  mobizon_api_key  — ключ из ЛК Mobizon (~256 hex). Без него отправка отключена.
+  mobizon_sender   — подпись отправителя (опционально). Если зарегистрирована —
                      SMS придёт от 'STROYAPP'. Если нет — от общего 'MOBINFO'/etc.
 
 Документация Mobizon: https://help.mobizon.com/help/api-docs
 """
-import os
 
 import httpx
 
@@ -68,16 +67,16 @@ async def _send_code(phone: str, code: str, text: str, code_in_log: bool) -> Non
         print(f"[{get_timestamp_now()}] 📱 MOCK SMS -> {phone}: код {code}")
         return
 
-    api_key = os.environ.get('MOBIZON_API_KEY', '').strip()
+    api_key = config['sms']['mobizon_api_key']
     if not api_key:
         # Прод, но ключ не настроен — не падаем, но громко жалуемся в лог.
         print(
-            f"[{get_timestamp_now()}] ⚠️ MOBIZON_API_KEY не настроен. "
+            f"[{get_timestamp_now()}] ⚠️ Ключ Mobizon не задан (админка → Настройки). "
             f"SMS на {phone} НЕ отправлен." + (f" Код: {code}" if code_in_log else ''),
         )
         return
 
-    sender = os.environ.get('MOBIZON_SENDER', '').strip()
+    sender = config['sms']['mobizon_sender']
 
     # Mobizon хочет номер БЕЗ '+', только цифры.
     # Наш phone уже нормализован в формате +7XXXXXXXXXX.

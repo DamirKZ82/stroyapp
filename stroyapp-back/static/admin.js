@@ -193,6 +193,8 @@
     provider_verify: 'Отметил «Проверенный»',
     provider_unverify: 'Снял «Проверенный»',
     pro_grant: 'Подарил Pro',
+    setting_update: 'Изменил настройку',
+    setting_reset: 'Сбросил настройку к .env',
   };
   const PLAN_TIER = {
     none: ['Без тарифа', ''],
@@ -417,7 +419,8 @@
    * ответа: неверный пароль или номер исправляют тут же, не начиная заново.
    * Вернёт ответ сервера или null, если передумали.
    */
-  function confirmByPassword({ title, text, confirmLabel, danger, fields, send }) {
+  /** note — почему спрашиваем пароль; по умолчанию — про назначение админов. */
+  function confirmByPassword({ title, text, confirmLabel, danger, fields, send, note }) {
     return new Promise((resolve) => {
       let answer = null;
       let busy = false;
@@ -432,7 +435,8 @@
         onclick: () => form.requestSubmit(),
       });
       const cancel = el('button', { class: 'btn ghost', type: 'button', text: 'Отмена', onclick: () => win.dismiss() });
-      const firstField = () => form.querySelector('input:not([type="password"]):not([hidden])') || password;
+      // data-first — поле, с которого начинать, даже если оно скрытое (новый секрет).
+      const firstField = () => form.querySelector('[data-first]') || form.querySelector('input:not([type="password"]):not([hidden])') || password;
       const form = el('form', {
         onsubmit: async (e) => {
           e.preventDefault();
@@ -463,7 +467,7 @@
         text ? el('p', { text }) : null,
         fields,
         labeled('Ваш пароль от админки', password),
-        el('p', { class: 'muted small', text: 'Так назначить или снять админа не сможет тот, кому достался только ваш открытый вход, без пароля.' }),
+        el('p', { class: 'muted small', text: note || 'Так назначить или снять админа не сможет тот, кому достался только ваш открытый вход, без пароля.' }),
         error,
         // Невидимая кнопка отправки: с ней Enter в любом поле отправляет форму.
         el('button', { type: 'submit', hidden: true, tabIndex: -1 }));
@@ -1466,7 +1470,85 @@
     ['logs', 'Журнал ошибок', viewLogs],
     ['actions', 'Действия', viewActions],
     ['service', 'Служебные', viewService],
+    ['settings', 'Настройки', viewSettings],
   ];
+
+  // ---- Настройки: ключи интеграций ----------------------------------------
+
+  const SETTING_SOURCE = {
+    db: ['Задано здесь', 'ok'],
+    env: ['Из .env', ''],
+    none: ['Не задано', 'warn'],
+    unreadable: ['Не расшифровывается', 'bad'],
+  };
+  const SETTINGS_NOTE = 'Ключ кассы или SMS в чужих руках — это деньги: без пароля его не поменяет тот, кому достался только ваш открытый вход.';
+
+  async function viewSettings(root) {
+    const list = el('div');
+    const draw = (items) => {
+      const groups = [];
+      for (const s of items) {
+        let g = groups.find((x) => x.name === s.group);
+        if (!g) { g = { name: s.group, items: [] }; groups.push(g); }
+        g.items.push(s);
+      }
+      list.replaceChildren(...groups.map((g) => el('div', { class: 'panel' },
+        el('h3', { text: g.name }),
+        el('div', { class: 'list' }, g.items.map((s) => el('div', { class: 'item' },
+          el('div', { class: 'grow' },
+            el('div', { class: 'title', text: s.label }),
+            el('div', { class: 'meta', text: s.value == null ? 'значения нет' : s.kind === 'bool' ? (s.value === '1' ? 'включено' : 'выключено') : s.value }),
+            s.hint ? el('div', { class: 'meta', text: s.hint }) : null,
+            s.source === 'unreadable' ? el('div', { class: 'meta', text: 'Значение в базе зашифровано другим ключом (сменили SETTINGS_KEY или JWT_SECRET). Задайте его заново.' }) : null,
+            s.updated_at ? el('div', { class: 'meta', text: `изменено ${fmtDate(s.updated_at)}${s.updated_by ? ' · ' + s.updated_by : ''}` }) : null),
+          el('div', { class: 'side' },
+            badge(SETTING_SOURCE[s.source]),
+            el('div', { class: 'row' },
+              el('button', { class: 'btn ghost small', type: 'button', text: 'Изменить', onclick: () => edit(s) }),
+              s.source === 'db' || s.source === 'unreadable'
+                ? el('button', { class: 'btn ghost small', type: 'button', text: 'Сбросить', onclick: () => reset(s) })
+                : null))))))));
+    };
+    async function edit(s) {
+      const input = s.kind === 'bool'
+        ? el('select', { name: 'setting-value', 'data-first': '' }, el('option', { value: '1', text: 'Включено' }), el('option', { value: '0', text: 'Выключено' }))
+        : plain(el('input', {
+          name: 'setting-value',
+          'data-first': '',
+          type: s.secret ? 'password' : s.kind === 'int' ? 'number' : 'text',
+          autocomplete: s.secret ? 'new-password' : 'off',
+          value: s.secret || s.value == null ? '' : s.value,
+        }));
+      if (s.kind === 'bool') input.value = s.value === '1' ? '1' : '0';
+      const done = await confirmByPassword({
+        title: s.label,
+        confirmLabel: 'Сохранить',
+        text: s.secret
+          ? 'Старое значение не показываем: введите новое целиком. Оно хранится зашифрованным и действует сразу, во всех процессах сервера — в течение 30 секунд.'
+          : 'Новое значение действует сразу, во всех процессах сервера — в течение 30 секунд.',
+        fields: [labeled(s.label, input)],
+        note: SETTINGS_NOTE,
+        send: (password) => call('PUT', '/admin/api/settings/' + encodeURIComponent(s.key), { value: input.value, password }),
+      });
+      if (done) { toast('Сохранено'); draw(done.items); }
+    }
+    async function reset(s) {
+      const done = await confirmByPassword({
+        title: 'Сбросить «' + s.label + '»?',
+        confirmLabel: 'Сбросить',
+        danger: true,
+        text: `Значение из базы удалится, и снова будет действовать переменная ${s.env} из .env — или ничего, если её там нет.`,
+        note: SETTINGS_NOTE,
+        send: (password) => call('DELETE', '/admin/api/settings/' + encodeURIComponent(s.key), { password }),
+      });
+      if (done) { toast('Сброшено'); draw(done.items); }
+    }
+    draw((await call('GET', '/admin/api/settings')).items);
+    root.append(
+      el('h2', { text: 'Настройки' }),
+      el('p', { class: 'muted', text: 'Ключи кассы, SMS, уведомлений и карт. Здесь заданное перекрывает .env на сервере; секреты хранятся в базе зашифрованными. В .env остаются только доступ к базе, JWT_SECRET и SETTINGS_KEY.' }),
+      list);
+  }
 
   // Разделы, где у записи есть своё окно: #users/57 откроет его сразу.
   const OPENERS = { users: openUser, providers: openProvider, complaints: openComplaint };

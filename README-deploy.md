@@ -71,11 +71,14 @@ cp .env.example .env
 # Сгенерировать пароли
 echo "DB_PASSWORD=$(openssl rand -hex 24)" >> /tmp/secrets
 echo "JWT_SECRET=$(openssl rand -hex 32)" >> /tmp/secrets
+echo "SETTINGS_KEY=$(openssl rand -hex 32)" >> /tmp/secrets
 cat /tmp/secrets   # скопировать в .env, потом удалить
 rm /tmp/secrets
 
 nano .env   # вставить пароли, сохранить
 ```
+
+Ключи кассы, SMS, Telegram и 2ГИС в `.env` не нужны: их задают после запуска в админке → «Настройки».
 
 ### 4. Первый запуск (HTTP-only)
 
@@ -241,6 +244,9 @@ docker compose logs postgres
 | `DB_USER` | да | Юзер БД (`stroyapp_user`) |
 | `DB_PASSWORD` | да | Пароль БД |
 | `JWT_SECRET` | да | 32+ hex символов для подписи токенов |
+| `SETTINGS_KEY` | желательно | Ключ шифрования секретов в базе (`openssl rand -hex 32`). Пусто — выводится из `JWT_SECRET`. Сменишь или потеряешь — ключи в админке придётся ввести заново |
+Ключи интеграций ниже удобнее задавать в админке → «Настройки»: там они хранятся в базе зашифрованными и меняются без перезапуска. Значение из админки перекрывает `.env`; переменные остаются запасным вариантом.
+
 | `TELEGRAM_BOT_TOKEN` | нет | Уведомления админу о новых заявках |
 | `TELEGRAM_CHAT_ID` | нет | Куда слать уведомления |
 | `TWOGIS_API_KEY` | нет | Для будущей интеграции 2ГИС |

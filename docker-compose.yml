@@ -70,8 +70,11 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      # Ключ шифрования секретов в базе (админка → «Настройки»)
+      SETTINGS_KEY: ${SETTINGS_KEY:-}
       UPLOADS_ROOT: /data/uploads
-      # Опционально (можно не задавать — функция деградирует)
+      # Запасной вариант: эти ключи удобнее задавать в админке → «Настройки»,
+      # значение из базы перекрывает переменную. Можно не задавать вовсе.
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       MOBIZON_API_KEY: ${MOBIZON_API_KEY:-}

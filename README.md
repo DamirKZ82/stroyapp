@@ -109,7 +109,8 @@ pip install -r requirements.txt
 
 # Создать .env на основе примера
 Copy-Item .env.example .env
-# Отредактируй .env: пароль БД, JWT_SECRET (32+ случайных символа)
+# Отредактируй .env: пароль БД, JWT_SECRET и SETTINGS_KEY (32+ случайных символа).
+# Ключи кассы, SMS и Telegram задаются потом в админке → «Настройки».
 
 # Запустить
 python main.py

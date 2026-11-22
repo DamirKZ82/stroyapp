@@ -98,13 +98,15 @@ class FcmTokenBody(BaseModel):
 # Демо-номер для ревью сторов
 # -------------------------------------------------------------------------
 
-def _init_review_phone() -> Optional[str]:
+def review_phone() -> Optional[str]:
     """
     Нормализованный демо-номер для ревьюеров Google Play / App Store,
     либо None, если функция выключена.
 
-    Разбираем один раз при старте: так кривой REVIEW_PHONE виден в логах
-    сразу, а не в момент, когда ревьюер уже не смог войти.
+    Считается при каждом вызове, а не раз при старте: номер и код задают в
+    админке («Настройки»), и включить или выключить демо-вход можно без
+    перезапуска. Формат админка проверяет при вводе; кривое значение из .env
+    просто выключает функцию.
     """
     raw = config['otp']['review_phone']
     code = config['otp']['review_code']
@@ -113,27 +115,11 @@ def _init_review_phone() -> Optional[str]:
     # VerifyOtpBody принимает строго 4 цифры: код другого формата ревьюер
     # физически не сможет отправить, поэтому такой конфиг не включаем.
     if len(code) != 4 or not code.isdigit():
-        print(
-            f"[{get_timestamp_now()}] ⚠️ REVIEW_CODE должен быть 4 цифры — "
-            f"демо-вход для ревью выключен"
-        )
         return None
     try:
-        phone = normalize_phone(raw)
+        return normalize_phone(raw)
     except WarnException:
-        print(
-            f"[{get_timestamp_now()}] ⚠️ REVIEW_PHONE={raw!r} не в формате "
-            f"+77XXXXXXXXX — демо-вход для ревью выключен"
-        )
         return None
-    print(
-        f"[{get_timestamp_now()}] 🧪 Демо-вход для ревью включён: {phone} "
-        f"(фиксированный код, SMS не отправляется)"
-    )
-    return phone
-
-
-REVIEW_PHONE = _init_review_phone()
 
 
 # -------------------------------------------------------------------------
@@ -155,11 +141,11 @@ async def _fixed_code(phone: str) -> Optional[str]:
     Фиксированный код для номера, либо None — тогда код случайный и
     уходит по SMS.
 
-    Фиксированный код бывает у демо-номера из REVIEW_PHONE и у служебных
+    Фиксированный код бывает у демо-номера (review_phone) и у служебных
     аккаунтов, созданных в админке. SMS им не шлём: номера могут не
     существовать, а код владелец и так знает.
     """
-    if REVIEW_PHONE is not None and phone == REVIEW_PHONE:
+    if phone == review_phone():
         return config['otp']['review_code']
     user = await _user_by_phone(phone)
     if user and user['is_service'] and user['service_code']:
@@ -331,7 +317,7 @@ async def verify_otp(body: VerifyOtpBody):
     # Демо-номером и служебными аккаунтами входят проверяющие магазинов и
     # тестировщики — каждый раз как новый человек. Согласие, оставшееся от
     # прошлого входа, спрятало бы от них шаг с условиями, а его и проверяют.
-    if not is_new_user and (user['is_service'] or phone == REVIEW_PHONE):
+    if not is_new_user and (user['is_service'] or phone == review_phone()):
         await forget_terms(user['id'])
 
     token = issue_token(user['id'])

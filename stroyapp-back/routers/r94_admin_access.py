@@ -29,7 +29,7 @@ from libs.passwords import PASSWORD_MAX, password_problem
 from libs.phone import normalize_phone
 from libs.sms import send_admin_code
 from libs.telegram import send_to_admins
-from routers.r01_auth import REVIEW_PHONE
+from routers.r01_auth import review_phone
 from services.admin_access import (
     check_password,
     client_address,
@@ -254,7 +254,7 @@ async def choose_password(body: PasswordBody, request: Request, background: Back
 async def add_admin(body: GrantBody, request: Request, background: BackgroundTasks,
                     admin=Depends(auth_admin)):
     phone = normalize_phone(body.phone)
-    if REVIEW_PHONE is not None and phone == REVIEW_PHONE:
+    if phone == review_phone():
         raise WarnException(409, 'Это демо-номер для ревью сторов с постоянным кодом — '
                                  'права админа ему не выдаются.')
     await _confirm_by_password(admin, body.password, request)

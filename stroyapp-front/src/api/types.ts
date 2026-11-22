@@ -189,7 +189,18 @@ export interface Photo {
 
 // ---------------------- Bookings ----------------------
 
-export type BookingStatus = 'pending' | 'confirmed' | 'rejected' | 'cancelled';
+/**
+ * awaiting_client — заявку оформил мастер, ждёт подтверждения клиента; продавец
+ * её не видит. declined — клиент не подтвердил, withdrawn — мастер отозвал.
+ */
+export type BookingStatus =
+  | 'awaiting_client'
+  | 'pending'
+  | 'confirmed'
+  | 'rejected'
+  | 'cancelled'
+  | 'declined'
+  | 'withdrawn';
 
 export interface Booking {
   id: number;
@@ -212,6 +223,31 @@ export interface Booking {
   } | null;
   provider_deleted: boolean;
   client?: { name: string | null; phone: string | null };
+  /** Мастер, оформивший заявку от имени клиента; null — клиент сам. */
+  ordered_by: { name: string | null; phone: string | null } | null;
+}
+
+// ---------------------- Masters ----------------------
+
+export type MasterLinkStatus = 'invited' | 'active';
+
+/** Связь «клиент — мастер». В masters имя — как подписал клиент, пока мастер не принял. */
+export interface MasterLink {
+  guid: string;
+  status: MasterLinkStatus;
+  name: string | null;
+  phone: string | null;
+  created_at: string;
+  accepted_at: string | null;
+}
+
+export interface MastersOverview {
+  /** Мои мастера (я — клиент). */
+  masters: MasterLink[];
+  /** Клиенты, для которых я заказываю (я — мастер). */
+  clients: MasterLink[];
+  /** Приглашения стать мастером, ждущие моего ответа. */
+  invites: MasterLink[];
 }
 
 // ---------------------- Reviews ----------------------

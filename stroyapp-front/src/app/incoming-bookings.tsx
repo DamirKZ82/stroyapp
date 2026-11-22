@@ -28,8 +28,11 @@ import { formatKzPhoneDisplay } from '@/utils/phone';
 import { pushOnce } from '@/utils/nav';
 
 // Отдельного фильтра «Отменённые» нет, как и раньше: заявки, отменённые
-// клиентом, видны только в общем списке.
-type Filter = 'all' | Exclude<BookingStatus, 'cancelled'>;
+// клиентом, видны только в общем списке. Заявки мастеров, которые клиент ещё
+// не подтвердил (или не подтвердил вовсе), владельцу сервер не отдаёт.
+type Filter =
+  | 'all'
+  | Exclude<BookingStatus, 'cancelled' | 'awaiting_client' | 'declined' | 'withdrawn'>;
 
 const FILTERS: Filter[] = ['all', 'pending', 'confirmed', 'rejected'];
 

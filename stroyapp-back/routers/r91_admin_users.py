@@ -117,6 +117,8 @@ async def stats(admin=Depends(auth_admin)):
             (SELECT COUNT(*) FROM bookings WHERE status = 'confirmed')::int AS bookings_confirmed,
             (SELECT COUNT(*) FROM bookings WHERE status = 'rejected')::int AS bookings_rejected,
             (SELECT COUNT(*) FROM bookings WHERE status = 'cancelled')::int AS bookings_cancelled,
+            (SELECT COUNT(*) FROM bookings WHERE ordered_by IS NOT NULL)::int AS bookings_by_masters,
+            (SELECT COUNT(*) FROM client_masters WHERE status = 'active')::int AS masters_active,
             (SELECT COUNT(*) FROM reviews)::int AS reviews_total,
             (SELECT COALESCE(AVG(rating), 0)::float FROM reviews) AS reviews_avg,
             (SELECT COUNT(*) FROM chats)::int AS chats_total,

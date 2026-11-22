@@ -200,7 +200,7 @@ router.setParams({ providerGuid }); // форма «создать» стала 
 | --- | --- | --- |
 | Поиск / Избранное / Сообщения / Профиль | `/`, `/favorites`, `/messages`, `/profile` | — |
 | Магазин / бригада | `/provider` | `providerGuid`, `fromChat?` (guid чата, из которого открыли) |
-| Новая заявка | `/booking-form` | `providerGuid`, `initialDate?` (YYYY-MM-DD), `initialComment?` (текст заявки, например позиция прайса) |
+| Новая заявка | `/booking-form` | `providerGuid`, `initialDate?` (YYYY-MM-DD), `initialComment?` (текст заявки, например позиция прайса). Если у человека есть клиенты как у мастера, форма сама предложит выбрать, для кого заявка |
 | Чат | `/chat` | `chatGuid` |
 | Мои заявки | `/my-bookings` | — |
 | Отзыв | `/review-form` | `bookingGuid`, `subjectName?` |
@@ -211,6 +211,8 @@ router.setParams({ providerGuid }); // форма «создать» стала 
 | Заявка (владельцу) | `/booking` | `bookingGuid` |
 | Форма объявления (с прайсом) | `/provider-form` | `providerGuid?`, `categoryId?` |
 | Тариф и оплата продавца | `/subscription` | — |
+| Мастера и клиенты (мастер заказывает от имени клиента) | `/masters` | — |
+| Заявки мастера для клиентов | `/ordered-bookings` | — |
 
 Перейти на вкладку с экрана над вкладками — `router.dismissTo('/messages')`,
 а не `push` / `navigate`: те положат поверх вторую копию вкладок.

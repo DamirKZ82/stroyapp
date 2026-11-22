@@ -1,21 +1,23 @@
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError, bookingsApi, providersApi, type BookingCreateBody } from '@/api';
-import type { PublicProviderDetails } from '@/api/types';
+import { ApiError, bookingsApi, mastersApi, providersApi, type BookingCreateBody } from '@/api';
+import type { MasterLink, PublicProviderDetails } from '@/api/types';
 import { Button } from '@/components/Button';
-import { Card } from '@/components/Card';
+import { Card, Row, RowGroup, SectionLabel } from '@/components/Card';
 import { DatePickerSheet } from '@/components/DatePickerSheet';
 import { ErrorBanner, Loader } from '@/components/Feedback';
 import { Field, Input, SelectField } from '@/components/Field';
 import { Screen } from '@/components/Screen';
 import { space, text, type ThemeColors } from '@/theme';
-import { useThemedStyles } from '@/theme/scheme';
+import { useColors, useThemedStyles } from '@/theme/scheme';
 import { formatDateHuman } from '@/utils/format';
 import { dictName } from '@/utils/i18nDict';
 import { useLang } from '@/utils/lang';
+import { formatKzPhoneDisplay } from '@/utils/phone';
 import { useOnTop } from '@/utils/nav';
 import { serverToday } from '@/utils/serverTime';
 
@@ -41,6 +43,7 @@ export default function BookingFormScreen() {
   const { t } = useTranslation();
   const lang = useLang();
   const styles = useThemedStyles(makeStyles);
+  const colors = useColors();
   const { providerGuid, initialDate, initialComment } = useLocalSearchParams<{
     providerGuid?: string;
     initialDate?: string;
@@ -63,6 +66,12 @@ export default function BookingFormScreen() {
   const [dateOpen, setDateOpen] = useState(false);
   const [address, setAddress] = useState('');
   const [comment, setComment] = useState(() => (initialComment ?? '').slice(0, COMMENT_MAX));
+
+  // Клиенты, для которых я заказываю как мастер. Пусто — выбора «для кого»
+  // нет вовсе: у большинства людей клиентов нет.
+  const [clients, setClients] = useState<MasterLink[]>([]);
+  /** guid связи с клиентом; null — заявка для себя. */
+  const [forLink, setForLink] = useState<string | null>(null);
 
   const [needDate, setNeedDate] = useState(false);
   const [needComment, setNeedComment] = useState(false);
@@ -100,6 +109,20 @@ export default function BookingFormScreen() {
     };
   }, [providerGuid, attempt]);
 
+  // Молча: без списка клиентов форма остаётся обычной заявкой для себя.
+  useEffect(() => {
+    let alive = true;
+    mastersApi
+      .list()
+      .then((r) => {
+        if (alive) setClients(r.clients);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const isService = subject?.category.kind === 'service';
 
   const pickDate = (next: string | null) => {
@@ -133,6 +156,12 @@ export default function BookingFormScreen() {
       setSent(true);
       return;
     }
+    // Заявка мастера ждёт клиента, чата с продавцом ещё нет: ведём к своим
+    // оформленным заявкам вместо сообщений.
+    if (body.master_link_guid) {
+      router.replace('/ordered-bookings');
+      return;
+    }
     // Именно dismissTo: push положил бы поверх стека вторую копию вкладок.
     router.dismissTo('/messages');
   };
@@ -154,6 +183,7 @@ export default function BookingFormScreen() {
       event_date: date,
       address: address.trim() || undefined,
       comment: what,
+      master_link_guid: forLink ?? undefined,
     });
   };
 
@@ -204,7 +234,7 @@ export default function BookingFormScreen() {
         <View style={styles.footer}>
           <ErrorBanner message={error ?? fieldError} announce={!!error} />
           <Button
-            label={t('booking_form.submit')}
+            label={forLink ? t('booking_form.submit_for_client') : t('booking_form.submit')}
             onPress={submit}
             busy={submitting}
             disabled={sent}
@@ -222,6 +252,41 @@ export default function BookingFormScreen() {
           {subjectMeta}
         </Text>
       </Card>
+
+      {clients.length > 0 ? (
+        <View style={styles.forWhom}>
+          <SectionLabel>{t('booking_form.for_whom')}</SectionLabel>
+          <RowGroup>
+            {[null, ...clients].map((c, i) => {
+              const guid = c?.guid ?? null;
+              const selected = forLink === guid;
+              const title = c
+                ? c.name || formatKzPhoneDisplay(c.phone ?? '')
+                : t('booking_form.for_me');
+              return (
+                <Row
+                  key={guid ?? 'me'}
+                  first={i === 0}
+                  title={title}
+                  icon={c ? 'account-hard-hat-outline' : 'account-outline'}
+                  onPress={() => setForLink(guid)}
+                  // Своей роли «переключатель из нескольких» у Row нет: выбор
+                  // проговариваем словами.
+                  accessibilityLabel={selected ? t('booking_form.for_selected', { name: title }) : title}
+                  right={
+                    <Icon
+                      name={selected ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={22}
+                      color={selected ? colors.primary : colors.muted}
+                    />
+                  }
+                />
+              );
+            })}
+          </RowGroup>
+          {forLink ? <Text style={styles.subjectMeta}>{t('booking_form.for_client_hint')}</Text> : null}
+        </View>
+      ) : null}
 
       <Card>
         <Field
@@ -289,4 +354,5 @@ const makeStyles = (colors: ThemeColors) =>
     subjectName: { fontSize: text.subtitle, fontWeight: '600', color: colors.text },
     subjectMeta: { fontSize: text.caption, color: colors.muted },
     footer: { flex: 1, gap: space.gap },
+    forWhom: { gap: 8 },
   });

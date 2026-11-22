@@ -100,6 +100,11 @@ async def purge_users(user_ids: list, keep_login: bool = False) -> dict:
         # бухгалтерии, но уже ни с кем не связаны.
         await delete(tx, 'seller_plans', f"user_id = ANY({u})")
         await tx.query(f"UPDATE payments SET user_id = null WHERE user_id = ANY({u})")
+        # Мастер клиента: связи в обе стороны. Заявки, которые человек
+        # оформлял как мастер, остаются у клиентов — уже без указания мастера.
+        stats['client_masters'] = await delete(
+            tx, 'client_masters', f"client_id = ANY({u}) OR master_id = ANY({u})")
+        await tx.query(f"UPDATE bookings SET ordered_by = null WHERE ordered_by = ANY({u})")
         if keep_login:
             # Токен пуш-уведомлений — тоже данные человека, а не часть входа.
             await tx.query(f"UPDATE users SET fcm_token = null WHERE id = ANY({u})")

@@ -7,6 +7,7 @@ export type BookingTone = 'warning' | 'success' | 'danger' | 'muted';
 
 export function bookingStatusTone(status: string): BookingTone {
   switch (status) {
+    case 'awaiting_client':
     case 'pending':
       return 'warning';
     case 'confirmed':

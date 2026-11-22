@@ -30,16 +30,18 @@ import { useLang } from '@/utils/lang';
 import { pushOnce, useOnTop } from '@/utils/nav';
 import { serverToday } from '@/utils/serverTime';
 
-// «Отменённые» отдельным фильтром не показываем: их видно только во «Все».
-type Filter = 'all' | Exclude<BookingStatus, 'cancelled'>;
+// Отменённые и закрытые без продавца отдельным фильтром не показываем: их
+// видно только во «Все».
+type Filter = 'all' | Exclude<BookingStatus, 'cancelled' | 'declined' | 'withdrawn'>;
 
 const NONE: ReadonlySet<string> = new Set();
 
-const FILTERS: Filter[] = ['all', 'pending', 'confirmed', 'rejected'];
+const FILTERS: Filter[] = ['all', 'awaiting_client', 'pending', 'confirmed', 'rejected'];
 
 /** Ключи целиком: новый фильтр без подписи не соберётся, а не покажет на чипе сам ключ. */
 const FILTER_KEY: Record<Filter, string> = {
   all: 'bookings.filter_all',
+  awaiting_client: 'bookings.filter_awaiting_client',
   pending: 'bookings.filter_pending',
   confirmed: 'bookings.filter_confirmed',
   rejected: 'bookings.filter_rejected',
@@ -158,6 +160,49 @@ export default function MyBookingsScreen() {
     [onTop, t],
   );
 
+  // Решение по заявке мастера: «подтвердить» уводит её продавцу, «не
+  // подтверждать» закрывает. Вертушка — в том же наборе, что у отмены:
+  // на карточке за раз идёт только одно действие.
+  const decide = useCallback(
+    async (booking: Booking, approve: boolean) => {
+      setCancelling((prev) => new Set(prev).add(booking.guid));
+      try {
+        if (approve) await bookingsApi.approve(booking.guid);
+        else await bookingsApi.decline(booking.guid);
+      } catch (e) {
+        if (onTop.current) {
+          Alert.alert(
+            approve ? t('bookings.approve_failed') : t('bookings.decline_failed'),
+            e instanceof ApiError ? e.message : t('common.error_generic'),
+          );
+        }
+      } finally {
+        setCancelling((prev) => {
+          const next = new Set(prev);
+          next.delete(booking.guid);
+          return next;
+        });
+        void loadRef.current();
+      }
+    },
+    [onTop, t],
+  );
+
+  const onApprove = useCallback((booking: Booking) => void decide(booking, true), [decide]);
+
+  const confirmDecline = useCallback(
+    (booking: Booking) => {
+      confirmDestructive(
+        t('bookings.decline_confirm_title'),
+        t('bookings.decline_confirm_text'),
+        () => void decide(booking, false),
+        t('bookings.decline_yes'),
+        t('common.no'),
+      );
+    },
+    [decide, t],
+  );
+
   const confirmCancel = useCallback(
     (booking: Booking) => {
       confirmDestructive(
@@ -187,9 +232,11 @@ export default function MyBookingsScreen() {
         today={today}
         cancelling={cancelling.has(item.guid)}
         onCancel={confirmCancel}
+        onApprove={onApprove}
+        onDecline={confirmDecline}
       />
     ),
-    [today, cancelling, confirmCancel],
+    [today, cancelling, confirmCancel, onApprove, confirmDecline],
   );
 
   const keyExtractor = useCallback((item: Booking) => item.guid, []);
@@ -268,6 +315,8 @@ interface BookingCardProps {
   /** Идёт запрос отмены именно этой заявки. */
   cancelling: boolean;
   onCancel: (booking: Booking) => void;
+  onApprove: (booking: Booking) => void;
+  onDecline: (booking: Booking) => void;
 }
 
 const BookingCard = memo(function BookingCard({
@@ -275,6 +324,8 @@ const BookingCard = memo(function BookingCard({
   today,
   cancelling,
   onCancel,
+  onApprove,
+  onDecline,
 }: BookingCardProps) {
   const { t } = useTranslation();
   const lang = useLang();
@@ -288,6 +339,7 @@ const BookingCard = memo(function BookingCard({
   const subjectGuid = deleted ? null : (subject?.guid ?? null);
   const subjectName = deleted || !subject?.name ? null : subject.name;
 
+  const awaiting = booking.status === 'awaiting_client';
   const canCancel = booking.status === 'pending' || booking.status === 'confirmed';
   // Отзыв — с наступлением срока заявки (раньше сервер его отклонит) и
   // только пока объявление существует: отзыв об удалённом никто не увидит.
@@ -317,6 +369,11 @@ const BookingCard = memo(function BookingCard({
       <Text style={styles.meta} numberOfLines={1}>
         {t('bookings.wanted_by', { date: formatDateHuman(booking.event_date, lang) })}
       </Text>
+      {booking.ordered_by ? (
+        <Text style={styles.meta} numberOfLines={1}>
+          {t('bookings.ordered_by', { name: booking.ordered_by.name || booking.ordered_by.phone || '' })}
+        </Text>
+      ) : null}
     </View>
   );
 
@@ -353,6 +410,27 @@ const BookingCard = memo(function BookingCard({
         <Text style={styles.reason}>
           {t('bookings.rejected_reason', { reason: booking.rejected_reason })}
         </Text>
+      ) : null}
+
+      {awaiting ? (
+        <>
+          <Text style={styles.reason}>{t('bookings.awaiting_hint')}</Text>
+          <View style={styles.actions}>
+            <Button
+              label={t('bookings.decline_button')}
+              variant="text"
+              tone="danger"
+              disabled={cancelling}
+              onPress={() => onDecline(booking)}
+            />
+            <Button
+              label={t('bookings.approve_button')}
+              small
+              busy={cancelling}
+              onPress={() => onApprove(booking)}
+            />
+          </View>
+        </>
       ) : null}
 
       {canCancel || canReview ? (

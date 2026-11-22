@@ -76,6 +76,10 @@ stroyapp-back/
 └── uploads/providers/           # фото объявлений
 ```
 
+## Веб-кабинет продавца
+
+`GET /cabinet` — страница `static/cabinet.html` с `cabinet.css` и `cabinet.js` (роутер `r96_cabinet.py`). Сборки нет, библиотек нет. Своих эндпоинтов у кабинета нет: он ходит в тот же API, что приложение, с обычным токеном пользователя (вход `/auth/request-otp` → `/auth/verify-otp`). Оплата из кабинета — `POST /subscription/checkout` с `back: "cabinet"`: страница итога оплаты (`/payments/done?from=cabinet`) ведёт обратно в `/cabinet#plan`.
+
 ## Логирование ошибок
 
 - SQL упал → `ErrorException` с текстом SQL → глобальный хендлер → запись в `errors_back`

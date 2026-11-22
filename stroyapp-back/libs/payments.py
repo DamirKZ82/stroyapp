@@ -69,10 +69,14 @@ def fp_xml_answer(script: str, status: str, description: str) -> str:
     return f'<?xml version="1.0" encoding="utf-8"?><response>{body}</response>'
 
 
-async def fp_init(payment: dict, description: str) -> str:
-    """Создать платёж в Freedom Pay. Возвращает адрес страницы оплаты."""
+async def fp_init(payment: dict, description: str, back: str | None = None) -> str:
+    """
+    Создать платёж в Freedom Pay. Возвращает адрес страницы оплаты.
+    back='cabinet' — платили из веб-кабинета: страница итога ведёт обратно в него.
+    """
     fp = config['freedompay']
     base = config['public_url']
+    tail = '&from=cabinet' if back == 'cabinet' else ''
     params = {
         'pg_merchant_id': fp['merchant_id'],
         'pg_order_id': payment['guid'],
@@ -81,8 +85,8 @@ async def fp_init(payment: dict, description: str) -> str:
         'pg_description': description,
         'pg_salt': secrets.token_hex(8),
         'pg_result_url': f'{base}/payments/freedompay/result',
-        'pg_success_url': f'{base}/payments/done?status=ok',
-        'pg_failure_url': f'{base}/payments/done?status=fail',
+        'pg_success_url': f'{base}/payments/done?status=ok{tail}',
+        'pg_failure_url': f'{base}/payments/done?status=fail{tail}',
         'pg_testing_mode': fp['testing_mode'],
         'pg_language': 'ru',
     }

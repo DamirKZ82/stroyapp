@@ -38,7 +38,7 @@ from services.moderation import hide_listing, listing_subject, log_action, unhid
 
 router = APIRouter(prefix='/admin/api')
 
-BOOKING_STATUSES = ('pending', 'confirmed', 'rejected', 'cancelled')
+BOOKING_STATUSES = ('awaiting_client', 'pending', 'confirmed', 'rejected', 'cancelled', 'declined', 'withdrawn')
 
 
 def _check_status(status: str, allowed: dict) -> None:
@@ -286,6 +286,7 @@ _BOOKING_FROM = """
     FROM bookings b
     JOIN users u ON u.id = b.client_id
     LEFT JOIN providers p ON p.id = b.provider_id
+    LEFT JOIN users ob ON ob.id = b.ordered_by
 """
 
 
@@ -309,7 +310,8 @@ async def list_bookings(
         SELECT b.id, b.status, b.event_date, b.address,
                b.comment, b.rejected_reason, b.created_at,
                u.id AS client_id, u.phone AS client_phone, u.full_name AS client_name,
-               b.provider_id, p.name AS subject
+               b.provider_id, p.name AS subject,
+               b.ordered_by, ob.phone AS master_phone, ob.full_name AS master_name
         {_BOOKING_FROM}
         WHERE {where_sql(conditions)}
         ORDER BY b.id DESC

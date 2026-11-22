@@ -8,6 +8,8 @@ export interface BookingCreateBody {
   /** Адрес объекта. */
   address?: string;
   comment?: string;
+  /** Оформить от имени клиента: guid связи из mastersApi.list().clients. */
+  master_link_guid?: string;
 }
 
 export const bookingsApi = {
@@ -44,6 +46,24 @@ export const bookingsApi = {
 
   async reject(guid: string, reason: string): Promise<{ booking: Booking }> {
     const { data } = await apiClient.post(`/bookings/${guid}/reject`, { reason });
+    return data;
+  },
+
+  /** Клиент подтверждает заявку мастера: она уходит продавцу. */
+  async approve(guid: string): Promise<{ booking: Booking }> {
+    const { data } = await apiClient.post(`/bookings/${guid}/approve`);
+    return data;
+  },
+
+  /** Клиент не подтверждает заявку мастера. */
+  async decline(guid: string): Promise<{ booking: Booking }> {
+    const { data } = await apiClient.post(`/bookings/${guid}/decline`);
+    return data;
+  },
+
+  /** Заявки, которые я оформил как мастер. */
+  async ordered(): Promise<{ items: Booking[] }> {
+    const { data } = await apiClient.get<{ items: Booking[] }>('/bookings/ordered');
     return data;
   },
 

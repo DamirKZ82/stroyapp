@@ -5,13 +5,22 @@
 (event_date — желаемая дата доставки или начала работ). Календаря
 занятости нет: принятая заявка не закрывает дату для других.
 
-    POST   /bookings                 — создать заявку (клиент)
+    POST   /bookings                 — создать заявку (клиент или его мастер)
     GET    /bookings/my              — мои заявки (клиентские)
+    GET    /bookings/ordered         — заявки, которые я оформил как мастер клиентов
+    POST   /bookings/{guid}/approve  — подтвердить заявку мастера: уходит продавцу (клиент)
+    POST   /bookings/{guid}/decline  — не подтверждать заявку мастера (клиент)
     GET    /bookings/incoming        — входящие заявки (по всем моим объявлениям)
     POST   /bookings/{guid}/confirm  — принять (владелец)
     POST   /bookings/{guid}/reject   — отклонить (владелец), нужен reason
-    POST   /bookings/{guid}/cancel   — отменить свою заявку (клиент)
+    POST   /bookings/{guid}/cancel   — отменить заявку (клиент; мастер — пока её не подтвердили)
     GET    /bookings/{guid}          — детали
+
+Заявка мастера (routers/r36_masters.py): мастер оформляет её от имени
+клиента (client_id — клиент, ordered_by — мастер). Сначала она в статусе
+'awaiting_client' и продавцу не видна: ни во входящих, ни в чате, ни в пуше.
+Клиент подтверждает — она становится обычной 'pending' и уходит продавцу;
+отказывается — 'declined'.
 """
 import re
 from typing import Optional
@@ -27,6 +36,7 @@ from libs.date import get_date_today, get_timestamp_now
 from libs.fcm import send_push
 from libs.ownership import get_provider_by_guid
 from libs.text_filter import Clean
+from routers.r36_masters import active_link_for_master
 from services.peer_blocks import blocked_by_sql, either_blocked_sql, refusal
 
 
@@ -34,7 +44,13 @@ router = APIRouter()
 
 
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
-ALLOWED_STATUS_FILTERS = {'pending', 'confirmed', 'rejected', 'cancelled'}
+ALLOWED_STATUS_FILTERS = {'awaiting_client', 'pending', 'confirmed', 'rejected', 'cancelled',
+                          'declined', 'withdrawn'}
+# Заявки, которых продавец не видит: мастер оформил, а клиент ещё не
+# подтвердил (awaiting_client), отказался (declined) или мастер отозвал
+# заявку раньше (withdrawn). До продавца такие заявки не доходили.
+HIDDEN_FROM_OWNER = ('awaiting_client', 'declined', 'withdrawn')
+_NOT_HIDDEN_FROM_OWNER = "b.status NOT IN ('awaiting_client', 'declined', 'withdrawn')"
 
 # «Клиент заблокировал владельца объявления» — колонка для запросов заявок,
 # где есть bookings b и присоединены providers p. От неё зависит,
@@ -46,14 +62,16 @@ _OWNER_BLOCKED_BY_CLIENT = blocked_by_sql('b.client_id', 'p.owner_id')
 _BOOKING_SELECT = """
     b.id, b.guid, b.provider_id, b.client_id, b.event_date,
     b.address, b.comment, b.status, b.rejected_reason,
-    b.created_at, b.updated_at,
+    b.created_at, b.updated_at, b.ordered_by,
     p.name AS provider_name, p.guid AS provider_guid, p.owner_id,
-    cat.code AS category_code, cat.kind AS category_kind
+    cat.code AS category_code, cat.kind AS category_kind,
+    ob.full_name AS ordered_by_name, ob.phone AS ordered_by_phone
 """
 _BOOKING_FROM = """
     FROM bookings b
     LEFT JOIN providers p    ON p.id = b.provider_id
     LEFT JOIN categories cat ON cat.id = p.category_id
+    LEFT JOIN users ob       ON ob.id = b.ordered_by
 """
 
 
@@ -66,6 +84,8 @@ class BookingCreateBody(BaseModel):
     event_date: str
     address: Optional[Clean] = None
     comment: Optional[Clean] = None
+    # Мастер оформляет заявку для своего клиента — guid их связи.
+    master_link_guid: Optional[str] = None
 
     @field_validator('event_date')
     @classmethod
@@ -165,6 +185,11 @@ async def _booking_public(row: dict, for_client: bool = False) -> dict:
         'updated_at': row['updated_at'],
         'provider': provider,
         'provider_deleted': deleted,
+        # Кто оформил: мастер клиента. None — клиент сам.
+        'ordered_by': None if not row.get('ordered_by') else {
+            'name': row.get('ordered_by_name'),
+            'phone': row.get('ordered_by_phone'),
+        },
     }
 
 
@@ -205,19 +230,33 @@ async def create_booking(body: BookingCreateBody, user=Depends(auth_user)):
     if not provider['is_active']:
         raise WarnException(400, 'Объявление сейчас не принимает заявки')
 
+    # Мастер оформляет от имени клиента: заявка — клиентская, мастер в
+    # ordered_by, и до подтверждения клиентом продавец её не видит.
+    client_id = user['id']
+    ordered_by = None
+    if body.master_link_guid:
+        link = await active_link_for_master(body.master_link_guid, user['id'])
+        client_id = link['client_id']
+        ordered_by = user['id']
+    status = 'awaiting_client' if ordered_by else 'pending'
+
     owner_id = provider['owner_id']
-    if owner_id == user['id']:
-        raise WarnException(400, 'Нельзя отправить заявку на своё объявление')
+    if owner_id == client_id:
+        raise WarnException(400, 'Это объявление самого клиента' if ordered_by
+                            else 'Нельзя отправить заявку на своё объявление')
 
     # Одна активная заявка клиента на объявление: остальное — в чате.
     mine = await query_db(f"""
-        SELECT id FROM bookings
+        SELECT status FROM bookings
         WHERE provider_id = {fit_to_sql(provider['id'])}
-          AND client_id = {fit_to_sql(user['id'])}
-          AND status = 'pending'
+          AND client_id = {fit_to_sql(client_id)}
+          AND status IN ('pending', 'awaiting_client')
     """)
     if mine:
-        raise WarnException(400, 'У вас уже есть заявка на рассмотрении у этого объявления')
+        if mine[0]['status'] == 'awaiting_client':
+            raise WarnException(400, 'В этот магазин уже есть заявка, которая ждёт подтверждения клиента')
+        raise WarnException(400, 'У клиента уже есть заявка на рассмотрении у этого объявления' if ordered_by
+                            else 'У вас уже есть заявка на рассмотрении у этого объявления')
 
     now = get_timestamp_now()
     guid = new_guid()
@@ -228,32 +267,54 @@ async def create_booking(body: BookingCreateBody, user=Depends(auth_user)):
     rows = await query_db(f"""
         INSERT INTO bookings (
             guid, provider_id, client_id, event_date, address,
-            comment, status, created_at, updated_at
+            comment, status, ordered_by, created_at, updated_at
         )
         SELECT
             {fit_to_sql(guid)},
             {fit_to_sql(provider['id'])},
-            {fit_to_sql(user['id'])},
+            {fit_to_sql(client_id)},
             {fit_to_sql(body.event_date)},
             {fit_to_sql(body.address)},
             {fit_to_sql(body.comment)},
-            'pending',
+            {fit_to_sql(status)},
+            {fit_to_sql(ordered_by)},
             {fit_to_sql(now)},
             {fit_to_sql(now)}
-        WHERE NOT {either_blocked_sql(fit_to_sql(user['id']), fit_to_sql(owner_id))}
+        WHERE NOT {either_blocked_sql(fit_to_sql(client_id), fit_to_sql(owner_id))}
         RETURNING id
     """)
     if not rows:
+        if ordered_by:
+            # Чей это чёрный список — клиента или продавца, — мастеру знать незачем.
+            raise WarnException(403, 'Этот магазин не принимает заявки от вашего клиента')
         raise await refusal(user['id'], owner_id, 'booking')
 
     booking = await _get_booking_by_guid(guid)
+    if ordered_by:
+        await send_push(
+            user_id=client_id,
+            title='Подтвердите покупку',
+            body=f"{user['full_name'] or 'Мастер'}: {provider['name']}"
+                 + (f" — {body.comment[:80]}" if body.comment else ''),
+            data={'type': 'booking_awaiting_client', 'booking_guid': guid},
+        )
+    else:
+        await _deliver_to_owner(booking)
+    return {'booking': await _booking_public(booking)}
 
+
+async def _deliver_to_owner(booking: dict) -> None:
+    """
+    Заявка ушла продавцу: чат между клиентом и объявлением и пуш владельцу.
+    Заявка мастера уходит в момент, когда её подтвердил клиент.
+    """
+    now = get_timestamp_now()
     # Один чат между клиентом и объявлением.
     # Если уже есть — прикрепляем booking_id; иначе создаём.
     existing = await query_db(f"""
         SELECT id FROM chats
-        WHERE provider_id = {fit_to_sql(provider['id'])}
-          AND client_id = {fit_to_sql(user['id'])}
+        WHERE provider_id = {fit_to_sql(booking['provider_id'])}
+          AND client_id = {fit_to_sql(booking['client_id'])}
     """)
     if existing:
         await query_db(f"""
@@ -262,14 +323,13 @@ async def create_booking(body: BookingCreateBody, user=Depends(auth_user)):
             WHERE id = {fit_to_sql(existing[0]['id'])}
         """)
     else:
-        chat_guid = new_guid()
         await query_db(f"""
             INSERT INTO chats (guid, provider_id, client_id, owner_id, booking_id, created_at)
             VALUES (
-                {fit_to_sql(chat_guid)},
-                {fit_to_sql(provider['id'])},
-                {fit_to_sql(user['id'])},
-                {fit_to_sql(owner_id)},
+                {fit_to_sql(new_guid())},
+                {fit_to_sql(booking['provider_id'])},
+                {fit_to_sql(booking['client_id'])},
+                {fit_to_sql(booking['owner_id'])},
                 {fit_to_sql(booking['id'])},
                 {fit_to_sql(now)}
             )
@@ -277,13 +337,22 @@ async def create_booking(body: BookingCreateBody, user=Depends(auth_user)):
 
     # Пуш владельцу: "Новая заявка..."
     await send_push(
-        user_id=owner_id,
+        user_id=booking['owner_id'],
         title='Новая заявка',
-        body=f"{provider['name']}: к {_notification_date(body.event_date)}",
-        data={'type': 'new_booking', 'booking_guid': guid},
+        body=f"{booking['provider_name']}: к {_notification_date(booking['event_date'])}",
+        data={'type': 'new_booking', 'booking_guid': booking['guid']},
     )
 
-    return {'booking': await _booking_public(booking)}
+
+async def _push_master(booking: dict, title: str) -> None:
+    """Мастеру, оформившему заявку, — о том, что с ней стало."""
+    if booking.get('ordered_by'):
+        await send_push(
+            user_id=booking['ordered_by'],
+            title=title,
+            body=f"{booking['provider_name']}: к {_notification_date(booking['event_date'])}",
+            data={'type': 'ordered_booking', 'booking_guid': booking['guid']},
+        )
 
 
 # -------------------------------------------------------------------------
@@ -317,6 +386,29 @@ async def my_bookings(
     return {'items': [await _booking_public(r, for_client=True) for r in rows]}
 
 
+@router.get('/bookings/ordered')
+async def ordered_bookings(user=Depends(auth_user)):
+    """Заявки, которые я оформил как мастер, — с тем, для кого."""
+    rows = await query_db(f"""
+        SELECT {_BOOKING_SELECT},
+               {_OWNER_BLOCKED_BY_CLIENT} AS owner_blocked_by_client,
+               u.full_name AS client_name, u.phone AS client_phone
+        {_BOOKING_FROM}
+        LEFT JOIN users u ON u.id = b.client_id
+        WHERE b.ordered_by = {fit_to_sql(user['id'])}
+        ORDER BY b.id DESC
+        LIMIT 200
+    """)
+    items = []
+    for r in rows:
+        # Текст отказа — по тем же правилам, что у клиента: если клиент
+        # заблокировал продавца, мимо блокировки он не дойдёт и через мастера.
+        pub = await _booking_public(r, for_client=True)
+        pub['client'] = {'name': r['client_name'], 'phone': r['client_phone']}
+        items.append(pub)
+    return {'items': items}
+
+
 @router.get('/bookings/incoming')
 async def incoming_bookings(
     status: Optional[str] = Query(None),
@@ -330,6 +422,7 @@ async def incoming_bookings(
         {_BOOKING_FROM}
         LEFT JOIN users u ON u.id = b.client_id
         WHERE p.owner_id = {fit_to_sql(user['id'])}
+          AND {_NOT_HIDDEN_FROM_OWNER}
           {status_clause}
         ORDER BY b.id DESC
     """)
@@ -373,6 +466,7 @@ async def confirm_booking(guid: str, user=Depends(auth_user)):
         body=f"{booking['provider_name']}: к {_notification_date(booking['event_date'])}",
         data={'type': 'booking_confirmed', 'booking_guid': guid},
     )
+    await _push_master(booking, 'Магазин принял заявку')
 
     fresh = await _get_booking_by_guid(guid)
     return {'booking': await _booking_public(fresh)}
@@ -403,6 +497,7 @@ async def reject_booking(guid: str, body: BookingRejectBody, user=Depends(auth_u
         body=rejection_push_body(booking, body.reason),
         data={'type': 'booking_rejected', 'booking_guid': guid},
     )
+    await _push_master(booking, 'Магазин отклонил заявку')
 
     fresh = await _get_booking_by_guid(guid)
     return {'booking': await _booking_public(fresh)}
@@ -413,16 +508,26 @@ async def cancel_booking(guid: str, user=Depends(auth_user)):
     booking = await _get_booking_by_guid(guid)
     if booking is None:
         raise WarnException(404, 'Заявка не найдена')
-    if booking['client_id'] != user['id']:
+    is_client = booking['client_id'] == user['id']
+    # Мастер может отозвать свою заявку, пока клиент её не подтвердил. Дальше
+    # она клиентская, и отменяет её клиент.
+    is_master = booking['ordered_by'] == user['id'] and booking['status'] == 'awaiting_client'
+    if not is_client and not is_master:
         raise WarnException(403, 'Недостаточно прав')
-    if booking['status'] not in ('pending', 'confirmed'):
+    if booking['status'] not in ('pending', 'confirmed', 'awaiting_client'):
         raise WarnException(400, f"Нельзя отменить заявку в статусе '{booking['status']}'")
 
     was_confirmed = booking['status'] == 'confirmed'
+    # Заявку мастера, не дошедшую до продавца, «отменённой» у продавца не
+    # показываем: клиент — значит не подтвердил, мастер — отозвал.
+    if booking['status'] == 'awaiting_client':
+        new_status = 'declined' if is_client else 'withdrawn'
+    else:
+        new_status = 'cancelled'
     now = get_timestamp_now()
     await query_db(f"""
         UPDATE bookings
-           SET status = 'cancelled',
+           SET status = {fit_to_sql(new_status)},
                updated_at = {fit_to_sql(now)}
          WHERE id = {fit_to_sql(booking['id'])}
     """)
@@ -435,8 +540,70 @@ async def cancel_booking(guid: str, user=Depends(auth_user)):
             body=f"{booking['provider_name']}: к {_notification_date(booking['event_date'])}",
             data={'type': 'booking_cancelled', 'booking_guid': guid},
         )
+    if is_client:
+        await _push_master(booking, 'Клиент не подтвердил покупку' if new_status == 'declined'
+                           else 'Клиент отменил заявку')
 
     fresh = await _get_booking_by_guid(guid)
+    return {'booking': await _booking_public(fresh, for_client=True)}
+
+
+async def _awaiting_for_client(guid: str, user: dict) -> dict:
+    booking = await _get_booking_by_guid(guid)
+    if booking is None or booking['client_id'] != user['id']:
+        raise WarnException(404, 'Заявка не найдена')
+    if booking['status'] != 'awaiting_client':
+        raise WarnException(400, 'Эта заявка уже не ждёт подтверждения')
+    return booking
+
+
+@router.post('/bookings/{guid}/approve')
+async def approve_booking(guid: str, user=Depends(auth_user)):
+    """Клиент подтверждает заявку мастера: она уходит продавцу."""
+    booking = await _awaiting_for_client(guid, user)
+    # Пока заявка ждала, объявление могли снять с публикации, а у клиента —
+    # появиться своя заявка туда же.
+    provider = await get_provider_by_guid(booking['provider_guid']) if booking['provider_guid'] else None
+    if provider is None or not provider['is_active']:
+        raise WarnException(400, 'Объявление сейчас не принимает заявки')
+    mine = await query_db(f"""
+        SELECT id FROM bookings
+        WHERE provider_id = {fit_to_sql(booking['provider_id'])}
+          AND client_id = {fit_to_sql(user['id'])} AND status = 'pending'
+    """)
+    if mine:
+        raise WarnException(400, 'У вас уже есть заявка на рассмотрении у этого объявления')
+    now = get_timestamp_now()
+    # Блокировку проверяет сама запись: за время ожидания её могли поставить.
+    rows = await query_db(f"""
+        UPDATE bookings
+           SET status = 'pending', updated_at = {fit_to_sql(now)}
+         WHERE id = {fit_to_sql(booking['id'])} AND status = 'awaiting_client'
+           AND NOT {either_blocked_sql(fit_to_sql(user['id']), fit_to_sql(booking['owner_id']))}
+        RETURNING id
+    """)
+    if not rows:
+        fresh = await _get_booking_by_guid(guid)
+        if fresh['status'] != 'awaiting_client':
+            raise WarnException(400, 'Эта заявка уже не ждёт подтверждения')
+        raise await refusal(user['id'], booking['owner_id'], 'booking')
+    fresh = await _get_booking_by_guid(guid)
+    await _deliver_to_owner(fresh)
+    await _push_master(fresh, 'Клиент подтвердил покупку')
+    return {'booking': await _booking_public(fresh, for_client=True)}
+
+
+@router.post('/bookings/{guid}/decline')
+async def decline_booking(guid: str, user=Depends(auth_user)):
+    """Клиент не подтверждает заявку мастера: продавец её так и не увидит."""
+    booking = await _awaiting_for_client(guid, user)
+    await query_db(f"""
+        UPDATE bookings
+           SET status = 'declined', updated_at = {fit_to_sql(get_timestamp_now())}
+         WHERE id = {fit_to_sql(booking['id'])} AND status = 'awaiting_client'
+    """)
+    fresh = await _get_booking_by_guid(guid)
+    await _push_master(fresh, 'Клиент не подтвердил покупку')
     return {'booking': await _booking_public(fresh, for_client=True)}
 
 
@@ -450,13 +617,18 @@ async def get_booking(guid: str, user=Depends(auth_user)):
     booking = await _get_booking_by_guid(guid)
     if booking is None:
         raise WarnException(404, 'Заявка не найдена')
-    if booking['client_id'] != user['id'] and booking['owner_id'] != user['id']:
+    is_owner = booking['owner_id'] == user['id'] and booking['status'] not in HIDDEN_FROM_OWNER
+    if booking['client_id'] != user['id'] and booking['ordered_by'] != user['id'] and not is_owner:
+        # Заявку мастера, которую клиент ещё не подтвердил, продавец не видит
+        # и по прямой ссылке: для него её пока нет.
+        if booking['owner_id'] == user['id']:
+            raise WarnException(404, 'Заявка не найдена')
         raise WarnException(403, 'Недостаточно прав')
 
     # Если просмотр от владельца — добавим данные клиента (имя + телефон).
     # Если от клиента — данных клиента не показываем (они и так его собственные).
     public = await _booking_public(booking, for_client=booking['client_id'] == user['id'])
-    if booking['owner_id'] == user['id']:
+    if is_owner or booking['ordered_by'] == user['id']:
         client_rows = await query_db(f"""
             SELECT full_name, phone FROM users
             WHERE id = {fit_to_sql(booking['client_id'])}

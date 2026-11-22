@@ -227,6 +227,12 @@ export default function ProfileScreen() {
             onPress={() => pushOnce('/my-bookings')}
           />
           <Row
+            title={t('masters.title')}
+            subtitle={t('masters.row_subtitle')}
+            icon="account-hard-hat-outline"
+            onPress={() => pushOnce('/masters')}
+          />
+          <Row
             title={t('peer_block.list_title')}
             icon="account-cancel-outline"
             onPress={() => pushOnce('/blocked-users')}

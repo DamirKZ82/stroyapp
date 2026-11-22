@@ -241,6 +241,16 @@ export default function BookingScreen() {
         ) : (
           <Fact label={t('owner.booking_phone')} value="—" />
         )}
+        {/* Заявку оформил мастер клиента, а подтвердил сам клиент: продавцу
+            полезно знать, с кем ещё говорить о доставке. */}
+        {booking.ordered_by ? (
+          <Fact
+            label={t('owner.booking_ordered_by')}
+            value={[booking.ordered_by.name, booking.ordered_by.phone && formatKzPhoneDisplay(booking.ordered_by.phone)]
+              .filter(Boolean)
+              .join(', ') || '—'}
+          />
+        ) : null}
         <Fact label={t('owner.booking_date')} value={formatDateHuman(booking.event_date, lang)} />
         <Fact label={t('owner.booking_address')} value={booking.address || '—'} />
       </RowGroup>

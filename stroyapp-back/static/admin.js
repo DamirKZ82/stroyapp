@@ -166,7 +166,10 @@
     pending: ['Ожидает ответа', 'warn'],
     confirmed: ['Принята', 'ok'],
     rejected: ['Отклонена', 'bad'],
-    cancelled: ['Отменена клиентом', ''],
+    cancelled: ['Отменена', ''],
+    awaiting_client: ['Ждёт подтверждения клиента', 'warn'],
+    declined: ['Клиент не подтвердил', ''],
+    withdrawn: ['Мастер отозвал', ''],
   };
   // Единицы прайса — подписи с сервера (/dicts/units), здесь запасные.
   const UNITS = {
@@ -640,7 +643,7 @@
         card(t.complaints_new, 'Новые жалобы', `всего было ${t.complaints_total}`, { go: 'complaints', alert: t.complaints_new > 0 }),
         card(t.users_total, 'Пользователи', `+${t.users_week} за 7 дней · заблокировано ${t.users_blocked}`, { go: 'users' }),
         card(t.providers_total, 'Объявления', `магазинов ${t.shops_total} · бригад ${t.crews_total} · в поиске ${t.providers_public} · скрыто ${t.providers_hidden} · позиций в прайсах ${fmtNum(t.items_total)}`, { go: 'providers' }),
-        card(t.bookings_total, 'Заявки', `+${t.bookings_week} за 7 дней · ждут ответа ${t.bookings_pending} · подтверждено ${t.bookings_confirmed}`, { go: 'bookings' }),
+        card(t.bookings_total, 'Заявки', `+${t.bookings_week} за 7 дней · ждут ответа ${t.bookings_pending} · подтверждено ${t.bookings_confirmed}` + (t.bookings_by_masters === undefined ? '' : ` · от мастеров ${t.bookings_by_masters} · связок «клиент — мастер» ${t.masters_active}`), { go: 'bookings' }),
         // Старый сервер этих полей не пришлёт — тогда карточек нет.
         t.sellers_pro === undefined ? null
           : card(t.sellers_pro, 'Продавцы на Pro', `на пробном ${t.sellers_trial} · оплат за 30 дней ${fmtMoney(t.revenue_30d)}`),
@@ -1232,7 +1235,9 @@
         { type: 'search', name: 'q', placeholder: 'Объявление, адрес или телефон клиента' },
         { type: 'select', name: 'status', label: 'Статус', options: [
           ['all', 'Любой статус'], ['pending', 'Ожидают ответа'], ['confirmed', 'Приняты'],
-          ['rejected', 'Отклонены'], ['cancelled', 'Отменены клиентом'],
+          ['rejected', 'Отклонены'], ['cancelled', 'Отменены'],
+          ['awaiting_client', 'Ждут подтверждения клиента'], ['declined', 'Клиент не подтвердил'],
+          ['withdrawn', 'Мастер отозвал'],
         ] },
       ],
       fetchPage: (p) => call('GET', '/admin/api/bookings' + query(p)),
@@ -1244,12 +1249,14 @@
           el('div', { class: 'meta' }, 'Клиент: ',
             entityLink(person(b.client_phone, b.client_name), '#users/' + b.client_id, () => openUser(b.client_id)),
             ` · создана ${fmtDate(b.created_at)}`),
+          b.ordered_by ? el('div', { class: 'meta' }, 'Оформил мастер клиента: ',
+            entityLink(person(b.master_phone, b.master_name), '#users/' + b.ordered_by, () => openUser(b.ordered_by))) : null,
           b.comment ? el('div', { class: 'quote', text: b.comment }) : null,
           b.rejected_reason ? el('div', { class: 'quote', text: 'Причина отказа: ' + b.rejected_reason }) : null),
         el('div', { class: 'side' }, badge(BOOKING_STATUS[b.status]))),
     });
     root.append(el('h2', { text: 'Заявки' }),
-      el('p', { class: 'muted', text: 'Только просмотр: отвечает на заявку владелец, отменяет — клиент.' }), list.node);
+      el('p', { class: 'muted', text: 'Только просмотр: отвечает на заявку владелец, отменяет — клиент. Заявку мастера клиента продавец увидит только после того, как клиент её подтвердит.' }), list.node);
   }
 
   // ---- Отзывы ---------------------------------------------------------------

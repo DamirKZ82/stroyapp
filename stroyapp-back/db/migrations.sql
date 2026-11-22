@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     event_date         CHAR(10) NOT NULL,
     address            VARCHAR(500),
     comment            TEXT,
-    status             VARCHAR(20) NOT NULL,    -- 'pending' | 'confirmed' | 'rejected' | 'cancelled'
+    status             VARCHAR(20) NOT NULL,    -- 'awaiting_client' | 'pending' | 'confirmed' | 'rejected' | 'cancelled' | 'declined' | 'withdrawn'
     rejected_reason    TEXT,
     review_removed_at  CHAR(19),
     created_at         CHAR(19) NOT NULL,
@@ -594,3 +594,41 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at  CHAR(19) NOT NULL,
     updated_by  INT
 );
+
+-- =========================================================================
+-- Мастер клиента (routers/r36_masters.py)
+--
+-- Клиент, который делает ремонт, добавляет своего мастера по номеру
+-- телефона. Мастер принимает приглашение и дальше оформляет заявки в
+-- магазины от имени клиента; каждая такая заявка ждёт подтверждения клиента
+-- (bookings.status = 'awaiting_client') и только после него уходит продавцу.
+-- Деньги, как и везде, клиент платит продавцу напрямую.
+--
+--     master_phone — номер, на который пригласили: мастер мог ещё не
+--                    зарегистрироваться, приглашение дождётся его входа.
+--     master_id    — заполняется, когда мастер принял приглашение.
+--     status       — invited | active | declined | removed
+-- Без внешних ключей на users: строки удаляет services/account.py.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS client_masters (
+    id            SERIAL PRIMARY KEY,
+    guid          CHAR(36) UNIQUE NOT NULL,
+    client_id     INT NOT NULL,
+    master_phone  VARCHAR(20) NOT NULL,
+    master_id     INT,
+    master_label  VARCHAR(200),
+    status        VARCHAR(20) NOT NULL,
+    created_at    CHAR(19) NOT NULL,
+    accepted_at   CHAR(19),
+    ended_at      CHAR(19)
+);
+CREATE INDEX IF NOT EXISTS idx_client_masters_client ON client_masters(client_id);
+CREATE INDEX IF NOT EXISTS idx_client_masters_master ON client_masters(master_id);
+CREATE INDEX IF NOT EXISTS idx_client_masters_phone  ON client_masters(master_phone);
+-- Одно живое приглашение или связь на пару «клиент — номер мастера».
+CREATE UNIQUE INDEX IF NOT EXISTS uq_client_masters_live
+    ON client_masters(client_id, master_phone) WHERE status IN ('invited', 'active');
+
+-- Заявка, которую оформил мастер от имени клиента: кто оформил.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS ordered_by INT;
+CREATE INDEX IF NOT EXISTS idx_bookings_ordered_by ON bookings(ordered_by);

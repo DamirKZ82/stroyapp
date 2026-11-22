@@ -3,7 +3,7 @@
     - определение формата (jpg/png/webp/heic)
     - ресайз до 1920 по длинной стороне, JPEG 85%
     - превью 400 по длинной стороне
-    - сохранение в uploads/halls/{hall_id}/{uuid}.jpg и _thumb.jpg
+    - сохранение в uploads/providers/{provider_id}/{uuid}.jpg и _thumb.jpg
 
 Всё сохраняется как JPEG — это упрощает раздачу и избавляет от проблем с HEIC в браузерах.
 """
@@ -36,12 +36,6 @@ def _uploads_root() -> pathlib.Path:
     root = pathlib.Path(config['uploads']['root']).resolve()
     root.mkdir(parents=True, exist_ok=True)
     return root
-
-
-def _hall_dir(hall_id: int) -> pathlib.Path:
-    dir_path = _uploads_root() / 'halls' / str(hall_id)
-    dir_path.mkdir(parents=True, exist_ok=True)
-    return dir_path
 
 
 def _provider_dir(provider_id: int) -> pathlib.Path:
@@ -77,7 +71,7 @@ async def _save_image(content: bytes, filename: str,
                       dir_path: pathlib.Path, url_dir: str) -> Tuple[str, str]:
     """
     Общая логика сохранения фото (валидация, ресайз, запись на диск).
-    url_dir — относительный префикс вида 'halls/1' или 'providers/1'.
+    url_dir — относительный префикс вида 'providers/1'.
     Вернёт (file_path, thumb_path) — относительные URL под /uploads/.
     """
     if len(content) > MAX_FILE_BYTES:
@@ -118,23 +112,18 @@ async def _save_image(content: bytes, filename: str,
     )
 
 
-async def save_hall_photo(hall_id: int, filename: str, content: bytes) -> Tuple[str, str]:
-    """Сохранить фото зала -> /uploads/halls/{hall_id}/{uuid}.jpg."""
-    return await _save_image(content, filename, _hall_dir(hall_id), f'halls/{hall_id}')
-
-
 async def save_provider_photo(provider_id: int, filename: str, content: bytes) -> Tuple[str, str]:
-    """Сохранить фото исполнителя -> /uploads/providers/{provider_id}/{uuid}.jpg."""
+    """Сохранить фото объявления -> /uploads/providers/{provider_id}/{uuid}.jpg."""
     return await _save_image(content, filename, _provider_dir(provider_id), f'providers/{provider_id}')
 
 
 def delete_photo_files(file_path: str, thumb_path: str) -> None:
     """Удаляет файлы с диска. Не бросает — если файл уже удалён, просто пропускаем."""
-    root = _uploads_root().parent   # /.../uploads/halls/... -> /.../
+    root = _uploads_root().parent   # /.../uploads/providers/... -> /.../
     for rel in (file_path, thumb_path):
         if not rel:
             continue
-        # rel вида '/uploads/halls/1/abc.jpg' -> реальный путь = config.uploads.root + 'halls/1/abc.jpg'
+        # rel вида '/uploads/providers/1/abc.jpg' -> реальный путь = config.uploads.root + 'providers/1/abc.jpg'
         # (срезаем ведущий '/uploads/')
         prefix = '/uploads/'
         if rel.startswith(prefix):

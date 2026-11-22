@@ -25,7 +25,7 @@ from handlers.h03_auth import auth_admin
 from libs.admin_query import MAX_PAGE, like, limit_offset, paged, phone_match, where_sql
 from libs.common import clean_text, fit_to_sql
 from libs.date import get_timestamp_now
-from services.admin_listings import HALL_STATUS_SQL, PROVIDER_STATUS_SQL
+from services.admin_listings import PROVIDER_STATUS_SQL
 from services.complaints import REASON_LABELS, REASONS, STATUSES, TARGET_LABELS
 from services.moderation import log_action
 
@@ -36,12 +36,8 @@ NOTE_MAX = 500
 OUTCOMES = {'resolved': 'complaint_resolve', 'rejected': 'complaint_reject'}
 
 # Что сейчас с тем, на что пожаловались. NULL — уже удалено. У объявлений —
-# тот же статус, что в разделах «Залы» и «Исполнители».
+# тот же статус, что в разделе «Объявления».
 _TARGET_STATE = f"""CASE c.target_type
-    WHEN 'hall' THEN (
-        SELECT {HALL_STATUS_SQL}
-        FROM halls h JOIN venues v ON v.id = h.venue_id JOIN users u ON u.id = v.owner_id
-        WHERE h.id = c.target_id)
     WHEN 'provider' THEN (
         SELECT {PROVIDER_STATUS_SQL}
         FROM providers p JOIN users u ON u.id = p.owner_id
@@ -52,11 +48,6 @@ END"""
 
 # Объявление, к которому относится жалоба, — чтобы открыть его из жалобы.
 # У отзыва и переписки оно берётся из них самих, пока они существуют.
-_LISTING_HALL = """CASE c.target_type
-    WHEN 'hall' THEN (SELECT h.id FROM halls h WHERE h.id = c.target_id)
-    WHEN 'review' THEN (SELECT r.hall_id FROM reviews r WHERE r.id = c.target_id)
-    WHEN 'chat' THEN (SELECT ch.hall_id FROM chats ch WHERE ch.id = c.target_id)
-END"""
 _LISTING_PROVIDER = """CASE c.target_type
     WHEN 'provider' THEN (SELECT p.id FROM providers p WHERE p.id = c.target_id)
     WHEN 'review' THEN (SELECT r.provider_id FROM reviews r WHERE r.id = c.target_id)
@@ -112,7 +103,6 @@ async def _fetch(conditions: list, page: int = 1, page_size: int = 1) -> list:
                tu.is_blocked AS target_user_blocked,
                au.phone AS resolved_by_phone,
                {_TARGET_STATE} AS target_state,
-               {_LISTING_HALL} AS hall_id,
                {_LISTING_PROVIDER} AS provider_id,
                (SELECT COUNT(*) FROM complaints o WHERE {_SAME_TARGET})::int AS same_target_open,
                (SELECT MAX(o.id) FROM complaints o WHERE {_SAME_TARGET}) AS same_target_last

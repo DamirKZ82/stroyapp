@@ -1,7 +1,7 @@
 """
 Модерация: скрыть объявление, заблокировать человека, журнал действий админа.
 
-Как устроено скрытие. У заведений, залов и исполнителей уже есть признак
+Как устроено скрытие. У объявлений (магазины и бригады) уже есть признак
 is_active — «опубликовано»; на него смотрят поиск, карточка, заявки и чаты.
 Модератор пользуется им же: при скрытии is_active становится false,
 прежнее значение запоминается в was_active, а hidden_at / hidden_reason
@@ -30,18 +30,10 @@ from libs.date import get_timestamp_now
 SUPPORT_EMAIL = config['support_email']
 BLOCK_HIDE_REASON = 'Аккаунт владельца заблокирован'
 
-_TABLES = {'venue': 'venues', 'hall': 'halls', 'provider': 'providers'}
-_NOT_FOUND = {
-    'venue': 'Заведение не найдено',
-    'hall': 'Зал не найден',
-    'provider': 'Исполнитель не найден',
-}
-# Объявление (t) вместе с владельцем (u): у зала владелец — через заведение.
-_WITH_OWNER = {
-    'venue': 'venues t JOIN users u ON u.id = t.owner_id',
-    'provider': 'providers t JOIN users u ON u.id = t.owner_id',
-    'hall': 'halls t JOIN venues v ON v.id = t.venue_id JOIN users u ON u.id = v.owner_id',
-}
+_TABLES = {'provider': 'providers'}
+_NOT_FOUND = {'provider': 'Объявление не найдено'}
+# Объявление (t) вместе с владельцем (u).
+_WITH_OWNER = {'provider': 'providers t JOIN users u ON u.id = t.owner_id'}
 
 
 def _hide_set(now: str, reason: str, by_block: bool) -> str:
@@ -69,8 +61,6 @@ def _owned_by(user_id: int):
     """(таблица, условие) для всех объявлений человека."""
     uid = fit_to_sql(int(user_id))
     return (
-        ('venues', f'owner_id = {uid}'),
-        ('halls', f'venue_id IN (SELECT id FROM venues WHERE owner_id = {uid})'),
         ('providers', f'owner_id = {uid}'),
     )
 

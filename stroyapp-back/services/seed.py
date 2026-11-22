@@ -1,18 +1,16 @@
 """
 Сиды справочников:
 - cities   — крупные города Казахстана
-- holidays — праздничные даты РК (MVP-диапазон: текущий и следующий год)
-- event_types — типы мероприятий
-- hall_amenities — опции зала (чекбоксы)
+- categories — категории материалов и услуг
+- provider_attr_types — признаки объявлений (доставка, договор, гарантия…)
 
 Идемпотентно: используем INSERT ... ON CONFLICT DO NOTHING.
 """
 import pathlib
-from datetime import datetime
 
 from connections.connect_postgres import query_db
 from libs.common import fit_to_sql
-from libs.date import get_timestamp_now, KZ_TZ
+from libs.date import get_timestamp_now
 
 
 # -------------------------------------------------------------------------
@@ -78,88 +76,58 @@ CITIES = [
     ('Байконур',     'Байқоңыр'),
 ]
 
-# Фиксированные ежегодные праздники РК (месяц-день, название ru/kz).
-# Наурыз — 21-22-23 марта, все три дня выходные.
-ANNUAL_HOLIDAYS = [
-    ('01-01', 'Новый год',                   'Жаңа жыл'),
-    ('01-02', 'Новый год',                   'Жаңа жыл'),
-    ('03-08', 'Международный женский день',  'Халықаралық әйелдер күні'),
-    ('03-21', 'Наурыз мейрамы',              'Наурыз мейрамы'),
-    ('03-22', 'Наурыз мейрамы',              'Наурыз мейрамы'),
-    ('03-23', 'Наурыз мейрамы',              'Наурыз мейрамы'),
-    ('05-01', 'Праздник единства народа Казахстана', 'Қазақстан халқының бірлігі мерекесі'),
-    ('05-07', 'День защитника Отечества',    'Отан Қорғаушы күні'),
-    ('05-09', 'День Победы',                 'Жеңіс күні'),
-    ('07-06', 'День столицы',                'Астана күні'),
-    ('08-30', 'День Конституции',            'Қазақстан Республикасы Конституциясы күні'),
-    ('10-25', 'День Республики',             'Республика күні'),
-    ('12-16', 'День Независимости',          'Тәуелсіздік күні'),
-]
-
-EVENT_TYPES = [
-    ('wedding',     'Свадьба',                  'Үйлену тойы'),
-    ('kyz_uzatu',   'Кыз узату',                'Қыз ұзату'),
-    ('betashar',    'Беташар',                  'Беташар'),
-    ('anniversary', 'Юбилей',                   'Мерейтой'),
-    ('birthday',    'День рождения',            'Туған күн'),
-    ('tusau_kesu',  'Тұсау кесу',               'Тұсау кесу'),
-    ('sundet_toi',  'Сүндет той',               'Сүндет той'),
-    ('corporate',   'Корпоратив',               'Корпоратив'),
-    ('other',       'Другое',                   'Басқа'),
-]
-
-HALL_AMENITIES = [
-    ('own_kitchen',    'Своя кухня',                 'Өз асүйі',              'kitchen'),
-    ('bring_food',     'Можно со своей едой',        'Өз тағаммен келуге болады', 'food'),
-    ('alcohol',        'Алкоголь разрешён',          'Алкоголь рұқсат етілген','wine'),
-    ('stage',          'Сцена',                      'Сахна',                 'stage'),
-    ('parking',        'Парковка',                   'Тұрақ',                 'parking'),
-    ('air_conditioner','Кондиционер',                'Кондиционер',           'ac'),
-    ('kids_zone',      'Детская зона',               'Балалар аймағы',        'kids'),
-    ('dance_floor',    'Танцпол',                    'Би алаңы',              'dance'),
-    ('sound_system',   'Звуковая аппаратура',        'Дыбыстық жабдық',       'sound'),
-]
-
-
-CATEGORIES = [
+MATERIAL_CATEGORIES = [
     # code, name_ru, name_kz, icon (MaterialCommunityIcons), sort_order
-    ('restaurant', 'Рестораны и залы', 'Мейрамханалар мен залдар', 'silverware-fork-knife', 1),
-    ('host',       'Тамада',           'Тамада',                    'microphone-variant',    2),
-    ('artist',     'Артисты',          'Әртістер',                  'star',                  3),
-    ('decorator',  'Декораторы',       'Декораторлар',              'balloon',               4),
-    ('catering',   'Кейтеринг',        'Кейтеринг',                 'food-takeout-box',      5),
-    ('media',      'Фото и видео',     'Фото және видео',           'camera',                6),
+    ('mixes',       'Цемент и сухие смеси',        'Цемент және құрғақ қоспалар',    'sack',                  1),
+    ('bricks',      'Кирпич и блоки',              'Кірпіш және блоктар',            'wall',                  2),
+    ('lumber',      'Пиломатериалы',               'Ағаш материалдары',              'pine-tree',             3),
+    ('roofing',     'Кровля и фасад',              'Шатыр және қасбет',              'home-roof',             4),
+    ('plumbing',    'Сантехника',                  'Сантехника',                     'water-pump',            5),
+    ('electrical',  'Электрика',                   'Электр жабдықтары',              'flash',                 6),
+    ('flooring',    'Плитка и напольные покрытия', 'Плитка және еден жабындары',     'floor-plan',            7),
+    ('paints',      'Краски и отделка',            'Бояулар және әрлеу',             'format-paint',          8),
+    ('tools',       'Инструмент',                  'Құрал-саймандар',                'hammer-wrench',         9),
 ]
 
-# Атрибуты по категориям: (category_code, attr_code, name_ru, name_kz, icon, sort_order).
-# Категория restaurant атрибутов не имеет — у залов своя система hall_amenities.
-PROVIDER_ATTR_TYPES = [
-    # Тамада
-    ('host', 'lang_kz',   'Казахский язык',      'Қазақ тілі',       None, 1),
-    ('host', 'lang_ru',   'Русский язык',        'Орыс тілі',        None, 2),
-    ('host', 'with_show', 'Шоу-программа',        'Шоу-бағдарлама',   None, 3),
-    # Артисты
-    ('artist', 'singer',   'Певец / вокалист',   'Әнші',             None, 1),
-    ('artist', 'dancer',   'Танцор',             'Биші',             None, 2),
-    ('artist', 'magician', 'Фокусник',           'Фокусшы',          None, 3),
-    ('artist', 'band',     'Музыкальная группа', 'Музыкалық топ',    None, 4),
-    ('artist', 'showman',  'Шоумен',             'Шоумен',           None, 5),
-    # Декораторы
-    ('decorator', 'flowers',  'Живые цветы',          'Тірі гүлдер',         None, 1),
-    ('decorator', 'textile',  'Текстиль / драпировка', 'Тоқыма безендіру',    None, 2),
-    ('decorator', 'balloons', 'Воздушные шары',       'Ауа шарлары',         None, 3),
-    ('decorator', 'lighting', 'Световое оформление',  'Жарықпен безендіру',  None, 4),
-    # Кейтеринг
-    ('catering', 'european',   'Европейская кухня', 'Еуропалық тағамдар', None, 1),
-    ('catering', 'kazakh',     'Казахская кухня',   'Қазақ тағамдары',    None, 2),
-    ('catering', 'banquet',    'Банкетное меню',    'Банкет мәзірі',      None, 3),
-    ('catering', 'fourchette', 'Фуршет',            'Фуршет',             None, 4),
-    # Фото и видео
-    ('media', 'photo',  'Фотосъёмка',        'Фотоға түсіру',        None, 1),
-    ('media', 'video',  'Видеосъёмка',       'Видеоға түсіру',       None, 2),
-    ('media', 'drone',  'Аэросъёмка (дрон)', 'Аэротүсірілім (дрон)', None, 3),
-    ('media', 'studio', 'Студийная съёмка',  'Студиялық түсірілім',  None, 4),
+SERVICE_CATEGORIES = [
+    ('turnkey',     'Ремонт под ключ',             'Кілтке дейін жөндеу',            'home-city',            11),
+    ('finishing',   'Отделочные работы',           'Әрлеу жұмыстары',                'roller-brush',         12),
+    ('electrician', 'Электрики',                   'Электриктер',                    'lightning-bolt',       13),
+    ('plumber',     'Сантехники',                  'Сантехниктер',                   'pipe-wrench',          14),
+    ('tiler',       'Плиточники',                  'Плитка қалаушылар',              'grid',                 15),
+    ('roofer',      'Кровельщики',                 'Шатыр шеберлері',                'home-roof',            16),
+    ('facade',      'Фасадные работы',             'Қасбет жұмыстары',               'office-building',      17),
+    ('demolition',  'Демонтаж',                    'Бөлшектеу',                      'hammer',               18),
+    ('machinery',   'Доставка и спецтехника',      'Жеткізу және арнайы техника',    'dump-truck',           19),
 ]
+
+CATEGORIES = (
+    [(c, 'material', ru, kz, icon, order) for c, ru, kz, icon, order in MATERIAL_CATEGORIES]
+    + [(c, 'service', ru, kz, icon, order) for c, ru, kz, icon, order in SERVICE_CATEGORIES]
+)
+
+# Признаки объявления — одинаковые внутри вида категории:
+# (attr_code, name_ru, name_kz, icon, sort_order).
+MATERIAL_ATTRS = [
+    ('delivery',    'Доставка',           'Жеткізу',             'truck-delivery',  1),
+    ('pickup',      'Самовывоз',          'Өзі алып кету',       'store',           2),
+    ('cashless',    'Безналичный расчёт', 'Қолма-қолсыз есеп',   'credit-card',     3),
+    ('installment', 'Рассрочка',          'Бөліп төлеу',         'calendar-clock',  4),
+    ('wholesale',   'Опт',                'Көтерме сауда',       'package-variant', 5),
+]
+
+SERVICE_ATTRS = [
+    ('contract',     'Работа по договору',   'Шарт бойынша жұмыс',  'file-sign',        1),
+    ('warranty',     'Гарантия на работы',   'Жұмысқа кепілдік',    'shield-check',     2),
+    ('own_material', 'Со своим материалом',  'Өз материалымен',     'package-variant',  3),
+    ('free_measure', 'Бесплатный замер',     'Тегін өлшеу',         'tape-measure',     4),
+    ('estimate',     'Составим смету',       'Смета жасаймыз',      'calculator',       5),
+]
+
+PROVIDER_ATTR_TYPES = (
+    [(c[0], *a) for c in MATERIAL_CATEGORIES for a in MATERIAL_ATTRS]
+    + [(c[0], *a) for c in SERVICE_CATEGORIES for a in SERVICE_ATTRS]
+)
 
 
 async def seed_cities():
@@ -175,48 +143,11 @@ async def seed_cities():
     print(f"[{get_timestamp_now()}] 🌱 Cities seeded")
 
 
-async def seed_event_types():
-    for code, ru, kz in EVENT_TYPES:
-        await query_db(f"""
-            INSERT INTO event_types (code, name_ru, name_kz)
-            VALUES ({fit_to_sql(code)}, {fit_to_sql(ru)}, {fit_to_sql(kz)})
-            ON CONFLICT (code) DO NOTHING
-        """)
-    print(f"[{get_timestamp_now()}] 🌱 Event types seeded")
-
-
-async def seed_amenities():
-    for code, ru, kz, icon in HALL_AMENITIES:
-        await query_db(f"""
-            INSERT INTO hall_amenities (code, name_ru, name_kz, icon)
-            VALUES ({fit_to_sql(code)}, {fit_to_sql(ru)}, {fit_to_sql(kz)}, {fit_to_sql(icon)})
-            ON CONFLICT (code) DO NOTHING
-        """)
-    print(f"[{get_timestamp_now()}] 🌱 Amenities seeded")
-
-
-async def seed_holidays():
-    """
-    Раскатываем ежегодные праздники на текущий и следующий год.
-    Если в будущем потребуется расширить — просто вызови функцию ещё раз.
-    """
-    now_year = datetime.now(KZ_TZ).year
-    for year in (now_year, now_year + 1):
-        for md, ru, kz in ANNUAL_HOLIDAYS:
-            date = f"{year}-{md}"
-            await query_db(f"""
-                INSERT INTO holidays (date, name_ru, name_kz)
-                VALUES ({fit_to_sql(date)}, {fit_to_sql(ru)}, {fit_to_sql(kz)})
-                ON CONFLICT (date) DO NOTHING
-            """)
-    print(f"[{get_timestamp_now()}] 🌱 Holidays seeded ({now_year}, {now_year + 1})")
-
-
 async def seed_categories():
-    for code, ru, kz, icon, order in CATEGORIES:
+    for code, kind, ru, kz, icon, order in CATEGORIES:
         await query_db(f"""
-            INSERT INTO categories (code, name_ru, name_kz, icon, sort_order)
-            VALUES ({fit_to_sql(code)}, {fit_to_sql(ru)}, {fit_to_sql(kz)},
+            INSERT INTO categories (code, kind, name_ru, name_kz, icon, sort_order)
+            VALUES ({fit_to_sql(code)}, {fit_to_sql(kind)}, {fit_to_sql(ru)}, {fit_to_sql(kz)},
                     {fit_to_sql(icon)}, {fit_to_sql(order)})
             ON CONFLICT (code) DO NOTHING
         """)
@@ -243,8 +174,5 @@ async def seed_provider_attr_types():
 
 async def seed_all():
     await seed_cities()
-    await seed_event_types()
-    await seed_amenities()
-    await seed_holidays()
     await seed_categories()
     await seed_provider_attr_types()

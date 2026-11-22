@@ -63,7 +63,6 @@ config = {
         'photo_max_long_side': 1920,
         'photo_thumb_side': 400,
         'photo_jpeg_quality': 85,
-        'hall_photos_limit': 20,
     },
 
     # Вход в админку по паролю (services/admin_access.py).

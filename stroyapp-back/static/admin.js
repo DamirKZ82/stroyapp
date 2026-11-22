@@ -160,26 +160,27 @@
     public: ['В поиске', 'ok'],
     unpublished: ['Снято владельцем', ''],
     hidden: ['Скрыто модератором', 'bad'],
-    venue_hidden: ['Скрыто заведение', 'bad'],
     owner_blocked: ['Владелец заблокирован', 'bad'],
   };
   const BOOKING_STATUS = {
     pending: ['Ожидает ответа', 'warn'],
-    confirmed: ['Подтверждена', 'ok'],
+    confirmed: ['Принята', 'ok'],
     rejected: ['Отклонена', 'bad'],
     cancelled: ['Отменена клиентом', ''],
   };
-  const UNITS = { event: 'за мероприятие', hour: 'за час', person: 'за человека', day: 'за день' };
+  // Единицы прайса — подписи с сервера (/dicts/units), здесь запасные.
+  const UNITS = {
+    piece: 'шт', m2: 'м²', m3: 'м³', m: 'п.м.', kg: 'кг', ton: 'т', bag: 'мешок', pack: 'упак.',
+    roll: 'рулон', sheet: 'лист', liter: 'л', hour: 'час', day: 'день', trip: 'рейс', object: 'объект', work: 'работа',
+  };
+  const perUnit = (u) => (UNITS[u] ? 'за ' + UNITS[u] : '');
+  const KINDS = { material: 'Магазин', service: 'Бригада' };
   const ACTIONS = {
     user_block: 'Заблокировал пользователя',
     user_unblock: 'Разблокировал пользователя',
     user_delete: 'Удалил пользователя',
-    hall_hide: 'Скрыл зал',
-    hall_unhide: 'Вернул зал в поиск',
-    venue_hide: 'Скрыл заведение',
-    venue_unhide: 'Вернул заведение',
-    provider_hide: 'Скрыл исполнителя',
-    provider_unhide: 'Вернул исполнителя в поиск',
+    provider_hide: 'Скрыл объявление',
+    provider_unhide: 'Вернул объявление в поиск',
     photo_delete: 'Удалил фото',
     review_delete: 'Удалил отзыв',
     service_create: 'Создал служебный аккаунт',
@@ -585,8 +586,7 @@
     if (!dicts.cities) {
       const [cities, categories] = await Promise.all([api('GET', '/dicts/cities'), api('GET', '/dicts/categories')]);
       dicts.cities = cities.items || [];
-      // «Рестораны и залы» — не исполнители: у них свой раздел.
-      dicts.categories = (categories.items || []).filter((c) => c.code !== 'restaurant');
+      dicts.categories = categories.items || [];
     }
     return dicts;
   }
@@ -617,8 +617,7 @@
       el('div', { class: 'cards' },
         card(t.complaints_new, 'Новые жалобы', `всего было ${t.complaints_total}`, { go: 'complaints', alert: t.complaints_new > 0 }),
         card(t.users_total, 'Пользователи', `+${t.users_week} за 7 дней · заблокировано ${t.users_blocked}`, { go: 'users' }),
-        card(t.halls_total, 'Залы', `в поиске ${t.halls_public} · скрыто ${t.halls_hidden} · заведений ${t.venues_total}`, { go: 'halls' }),
-        card(t.providers_total, 'Исполнители', `в поиске ${t.providers_public} · скрыто ${t.providers_hidden}`, { go: 'providers' }),
+        card(t.providers_total, 'Объявления', `магазинов ${t.shops_total} · бригад ${t.crews_total} · в поиске ${t.providers_public} · скрыто ${t.providers_hidden} · позиций в прайсах ${fmtNum(t.items_total)}`, { go: 'providers' }),
         card(t.bookings_total, 'Заявки', `+${t.bookings_week} за 7 дней · ждут ответа ${t.bookings_pending} · подтверждено ${t.bookings_confirmed}`, { go: 'bookings' }),
         card(t.reviews_total, 'Отзывы', t.reviews_total ? `средняя оценка ${t.reviews_avg}` : 'пока нет', { go: 'reviews' }),
         card(t.chats_total, 'Переписки', `сообщений ${fmtNum(t.messages_total)}`),
@@ -659,7 +658,7 @@
         href: '#users/' + u.id,
         open: () => openUser(u.id, reload),
         title: person(u.phone, u.full_name),
-        lines: el('div', { class: 'meta', text: `С ${fmtDay(u.created_at)} · залов ${u.halls} · исполнителей ${u.providers} · заявок ${u.bookings}` }),
+        lines: el('div', { class: 'meta', text: `С ${fmtDay(u.created_at)} · объявлений ${u.providers} · заявок ${u.bookings}` }),
         side: [
           u.is_blocked ? badge(['Заблокирован', 'bad']) : null,
           u.is_admin ? badge(u.admin_active ? ['Админ', 'ok'] : ['Админ · не активирован', 'warn']) : null,
@@ -701,12 +700,12 @@
     return true;
   }
 
-  const miniListing = (item, kind, onChange) => row({
-    href: (kind === 'hall' ? '#halls/' : '#providers/') + item.id,
-    open: () => (kind === 'hall' ? openHall(item.id, onChange) : openProvider(item.id, onChange)),
+  const miniListing = (item, onChange) => row({
+    href: '#providers/' + item.id,
+    open: () => openProvider(item.id, onChange),
     title: item.name,
     image: thumb(item.thumb),
-    lines: el('div', { class: 'meta', text: kind === 'hall' ? `${item.venue_name} · ${item.city}` : `${item.category} · ${item.city}` }),
+    lines: el('div', { class: 'meta', text: `${KINDS[item.kind] || ''} · ${item.category} · ${item.city}` }),
     side: badge(LISTING_STATUS[item.status]),
   });
 
@@ -756,12 +755,11 @@
           ['Чёрные списки', data.counts.peer_blocks_on === undefined || data.counts.peer_blocks_by === undefined ? null
             : `в чёрном списке у ${data.counts.peer_blocks_on} чел. · сам внёс ${data.counts.peer_blocks_by}`],
         ]),
-        section('Залы', data.halls.map((h) => miniListing(h, 'hall', () => { load(true); changed(); })), 'Залов нет'),
-        section('Исполнители', data.providers.map((p) => miniListing(p, 'provider', () => { load(true); changed(); })), 'Объявлений исполнителя нет'),
+        section('Объявления', data.providers.map((p) => miniListing(p, () => { load(true); changed(); })), 'Объявлений нет'),
         section('Последние заявки', data.bookings.map((b) => el('div', { class: 'item' },
           el('div', { class: 'grow' },
             el('div', { class: 'title', text: b.subject || '—' }),
-            el('div', { class: 'meta', text: `на ${fmtDay(b.event_date)} · гостей ${b.guests_count} · ${fmtMoney(b.price_at_booking)} · создана ${fmtDate(b.created_at)}` })),
+            el('div', { class: 'meta', text: `к ${fmtDay(b.event_date)}` + (b.address ? ` · ${b.address}` : '') + ` · создана ${fmtDate(b.created_at)}` })),
           el('div', { class: 'side' }, badge(BOOKING_STATUS[b.status])))), 'Заявок нет'),
         section('Последние отзывы', data.reviews.map((r) => el('div', { class: 'item' },
           el('div', { class: 'grow' },
@@ -839,32 +837,6 @@
     load();
   }
 
-  // ---- Залы -------------------------------------------------------------
-
-  function viewHalls(root) {
-    const list = listView({
-      filters: [
-        { type: 'search', name: 'q', placeholder: 'Зал, заведение, адрес или телефон владельца' },
-        { type: 'select', name: 'city_id', label: 'Город', options: cityOptions() },
-        { type: 'select', name: 'status', label: 'Статус', options: STATUS_OPTIONS },
-      ],
-      fetchPage: (p) => call('GET', '/admin/api/halls' + query(p)),
-      emptyText: 'Залов не нашлось',
-      renderItem: (h, reload) => row({
-        href: '#halls/' + h.id,
-        open: () => openHall(h.id, reload),
-        title: h.name,
-        image: thumb(h.thumb),
-        lines: [
-          el('div', { class: 'meta', text: `${h.venue_name} · ${h.city} · ${person(h.owner_phone, h.owner_name)}` }),
-          el('div', { class: 'meta', text: `${fmtMoney(h.price_weekday)} / ${fmtMoney(h.price_weekend)} · фото ${h.photos} · добавлен ${fmtDay(h.created_at)}` }),
-        ],
-        side: badge(LISTING_STATUS[h.status]),
-      }),
-    });
-    root.append(el('h2', { text: 'Залы' }), list.node);
-  }
-
   function photoGrid(photos, deletePath, afterDelete) {
     if (!photos.length) return el('p', { class: 'muted', text: 'Фотографий нет' });
     return el('div', { class: 'photos' }, photos.map((p) => el('div', { class: 'photo' },
@@ -885,109 +857,42 @@
   function hiddenNote(item) {
     if (item.status === 'owner_blocked') return el('div', { class: 'note', text: 'Владелец заблокирован — объявление не видно в поиске.' });
     if (item.hidden_at) return el('div', { class: 'note', text: `Скрыто модератором ${fmtDate(item.hidden_at)}. Причина: ${item.hidden_reason || 'не указана'}` });
-    if (item.venue_hidden_at) return el('div', { class: 'note', text: `Скрыто всё заведение ${fmtDate(item.venue_hidden_at)}. Причина: ${item.venue_hidden_reason || 'не указана'}` });
     return null;
   }
 
   const ownerLink = (item, onChange) => entityLink(
     person(item.owner_phone, item.owner_name), '#users/' + item.owner_id, () => openUser(item.owner_id, onChange));
 
-  async function openHall(id, onChange) {
-    const win = modal({ title: 'Зал', body: el('p', { class: 'muted', text: 'Загрузка…' }) });
-    const changed = () => { if (onChange) onChange(); };
-
-    let loads = 0;
-    async function load(again) {
-      const mine = ++loads;
-      let h;
-      try {
-        h = (await call('GET', '/admin/api/halls/' + id)).hall;
-      } catch (e) {
-        if (mine === loads) { win.close(); if (!gone(e, again)) toast(e.message, true); }
-        return;
-      }
-      if (mine !== loads) return;
-
-      const body = [
-        hiddenNote(h),
-        photoGrid(h.photo_list, '/admin/api/hall-photos/', () => { load(true); changed(); }),
-        facts([
-          ['Статус', badge(LISTING_STATUS[h.status])],
-          ['Заведение', `${h.venue_name}, ${h.city}, ${h.address}`],
-          ['Телефон заведения', h.venue_phone ? fmtPhone(h.venue_phone) : null],
-          ['Владелец', ownerLink(h, () => { load(true); changed(); })],
-          ['Цена', `будни ${fmtMoney(h.price_weekday)} · выходные ${fmtMoney(h.price_weekend)}`],
-          ['Вместимость', h.capacity_min || h.capacity_max ? `${h.capacity_min || '…'}–${h.capacity_max || '…'} гостей` : null],
-          ['Площадь', h.area_sqm ? `${h.area_sqm} м²` : null],
-          ['Удобства', h.amenities.join(', ')],
-          ['Описание зала', h.description],
-          ['О заведении', h.venue_description],
-          ['Заявок и отзывов', `заявок ${h.counts.bookings} · отзывов ${h.counts.reviews}` + (h.counts.reviews ? ` · оценка ${h.counts.rating}` : '')],
-          h.counts.complaints ? ['Жалоб', `${h.counts.complaints}` + (h.counts.complaints_new ? ` (новых ${h.counts.complaints_new})` : '')] : ['Жалоб', null],
-          ['Добавлен', fmtDate(h.created_at)],
-        ]),
-      ];
-
-      const blocked = h.status === 'owner_blocked';
-      const act = (label, cls, handler) => el('button', { class: 'btn ' + cls, type: 'button', text: label, onclick: handler });
-      const hide = (kind, targetId, title, text, hint, done) => async () => {
-        const reason = await askReason({ title, text, hint, confirmLabel: 'Скрыть' });
-        if (reason && await run(() => call('POST', `/admin/api/${kind}/${targetId}/hide`, { reason }), done)) { load(true); changed(); }
-      };
-      const unhide = (kind, targetId, done) => async () => {
-        if (await run(() => call('POST', `/admin/api/${kind}/${targetId}/unhide`), done)) { load(true); changed(); }
-      };
-      const foot = [];
-      if (!blocked) {
-        foot.push(h.venue_hidden_at
-          ? act('Вернуть заведение', 'ghost', unhide('venues', h.venue_id, 'Заведение возвращено'))
-          : act(`Скрыть всё заведение (залов: ${h.venue_halls})`, 'danger', hide('venues', h.venue_id,
-            'Скрыть заведение целиком?',
-            `«${h.venue_name}» со всеми залами пропадёт из поиска и перестанет принимать заявки. Владелец увидит заведение снятым с публикации и вернуть его сам не сможет.`,
-            'Причина останется в журнале действий. Владельцу приложение её пока не показывает — если нужно, сообщите ему сами.',
-            'Заведение скрыто')));
-        foot.push(h.hidden_at
-          ? act('Вернуть зал в поиск', '', unhide('halls', h.id, 'Зал возвращён'))
-          : act('Скрыть зал', 'danger solid', hide('halls', h.id,
-            'Скрыть зал из поиска?',
-            'Зал пропадёт из поиска и перестанет принимать заявки. Владелец увидит его снятым с публикации и не сможет опубликовать сам, пока вы не вернёте.',
-            REASON_FOR_OWNER, 'Зал скрыт')));
-      }
-      win.fill(body, foot);
-      win.node.querySelector('h2').textContent = h.name;
-    }
-    load();
-  }
-
-  // ---- Исполнители --------------------------------------------------------
+  // ---- Объявления: магазины и бригады --------------------------------------------------------
 
   function viewProviders(root) {
     const list = listView({
       filters: [
-        { type: 'search', name: 'q', placeholder: 'Название или телефон владельца' },
+        { type: 'search', name: 'q', placeholder: 'Название, адрес или телефон владельца' },
+        { type: 'select', name: 'kind', label: 'Вид', options: [['all', 'Магазины и бригады'], ['material', 'Магазины'], ['service', 'Бригады']] },
         { type: 'select', name: 'category_id', label: 'Категория', options: [['all', 'Все категории'], ...dicts.categories.map((c) => [c.id, c.name_ru])] },
         { type: 'select', name: 'city_id', label: 'Город', options: cityOptions() },
         { type: 'select', name: 'status', label: 'Статус', options: STATUS_OPTIONS },
       ],
       fetchPage: (p) => call('GET', '/admin/api/providers' + query(p)),
-      emptyText: 'Исполнителей не нашлось',
+      emptyText: 'Объявлений не нашлось',
       renderItem: (p, reload) => row({
         href: '#providers/' + p.id,
         open: () => openProvider(p.id, reload),
         title: p.name,
         image: thumb(p.thumb),
         lines: [
-          el('div', { class: 'meta', text: `${p.category} · ${p.city} · ${person(p.owner_phone, p.owner_name)}` }),
-          el('div', { class: 'meta', text: `${p.price_from ? 'от ' + fmtMoney(p.price_from) + ' ' + (UNITS[p.price_unit] || '') : 'цена не указана'} · фото ${p.photos} · добавлен ${fmtDay(p.created_at)}` }),
+          el('div', { class: 'meta', text: `${KINDS[p.kind] || ''} · ${p.category} · ${p.city} · ${person(p.owner_phone, p.owner_name)}` }),
+          el('div', { class: 'meta', text: `${p.price_from ? 'от ' + fmtMoney(p.price_from) + ' ' + perUnit(p.price_unit) : 'цена не указана'} · позиций ${p.items} · фото ${p.photos} · добавлено ${fmtDay(p.created_at)}` }),
         ],
         side: badge(LISTING_STATUS[p.status]),
       }),
     });
-    root.append(el('h2', { text: 'Исполнители' }), list.node);
+    root.append(el('h2', { text: 'Объявления' }), list.node);
   }
 
   async function openProvider(id, onChange) {
-    const win = modal({ title: 'Исполнитель', body: el('p', { class: 'muted', text: 'Загрузка…' }) });
+    const win = modal({ title: 'Объявление', body: el('p', { class: 'muted', text: 'Загрузка…' }) });
     const changed = () => { if (onChange) onChange(); };
 
     let loads = 0;
@@ -1007,11 +912,15 @@
         photoGrid(p.photo_list, '/admin/api/provider-photos/', () => { load(true); changed(); }),
         facts([
           ['Статус', badge(LISTING_STATUS[p.status])],
-          ['Категория и город', `${p.category}, ${p.city}`],
+          ['Вид, категория, город', `${KINDS[p.kind] || ''}, ${p.category}, ${p.city}`],
+          ['Адрес', p.address],
           ['Владелец', ownerLink(p, () => { load(true); changed(); })],
           ['Телефон в объявлении', p.phone ? fmtPhone(p.phone) : null],
-          ['Цена', p.price_from ? `от ${fmtMoney(p.price_from)} ${UNITS[p.price_unit] || ''}` : 'не указана'],
-          ['Специализация', p.attrs.join(', ')],
+          ['Цена', p.price_from ? `от ${fmtMoney(p.price_from)} ${perUnit(p.price_unit)}` : 'не указана'],
+          ['Условия', p.attrs.join(', ')],
+          ['Прайс', p.item_list.length
+            ? el('div', {}, p.item_list.map((it) => el('div', { text: `${it.name} — ${it.price == null ? 'договорная' : fmtMoney(it.price) + ' ' + perUnit(it.unit)}` })))
+            : 'не заполнен'],
           ['Описание', p.description],
           ['Заявок и отзывов', `заявок ${p.counts.bookings} · отзывов ${p.counts.reviews}` + (p.counts.reviews ? ` · оценка ${p.counts.rating}` : '')],
           p.counts.complaints ? ['Жалоб', `${p.counts.complaints}` + (p.counts.complaints_new ? ` (новых ${p.counts.complaints_new})` : '')] : ['Жалоб', null],
@@ -1078,7 +987,7 @@
           ['new', 'Новые'], ['resolved', 'Меры приняты'], ['rejected', 'Отклонены'], ['all', 'Все'],
         ] },
         { type: 'select', name: 'target_type', label: 'На что жалоба', options: [
-          ['all', 'На что угодно'], ['hall', 'Залы'], ['provider', 'Исполнители'], ['review', 'Отзывы'], ['chat', 'Переписка'],
+          ['all', 'На что угодно'], ['provider', 'Объявления'], ['review', 'Отзывы'], ['chat', 'Переписка'],
         ] },
       ],
       fetchPage: async (p) => {
@@ -1154,11 +1063,9 @@
       const userLink = (phone, name, userId) => entityLink(person(phone, name), '#users/' + userId, () => openUser(userId, refresh));
 
       // На что жалоба: объявление открывается из жалобы, пока оно существует.
-      const listing = c.hall_id
-        ? entityLink(c.target_label || 'Зал', '#halls/' + c.hall_id, () => openHall(c.hall_id, refresh))
-        : c.provider_id
-          ? entityLink(c.target_label || 'Исполнитель', '#providers/' + c.provider_id, () => openProvider(c.provider_id, refresh))
-          : (c.target_label || '—');
+      const listing = c.provider_id
+        ? entityLink(c.target_label || 'Объявление', '#providers/' + c.provider_id, () => openProvider(c.provider_id, refresh))
+        : (c.target_label || '—');
       const about = c.target_type === 'review' ? ['Отзыв об объявлении «', listing, '»']
         : c.target_type === 'chat' ? ['Переписка об объявлении «', listing, '»']
         : [listing];
@@ -1239,9 +1146,9 @@
   function viewBookings(root) {
     const list = listView({
       filters: [
-        { type: 'search', name: 'q', placeholder: 'Зал, исполнитель или телефон клиента' },
+        { type: 'search', name: 'q', placeholder: 'Объявление, адрес или телефон клиента' },
         { type: 'select', name: 'status', label: 'Статус', options: [
-          ['all', 'Любой статус'], ['pending', 'Ожидают ответа'], ['confirmed', 'Подтверждены'],
+          ['all', 'Любой статус'], ['pending', 'Ожидают ответа'], ['confirmed', 'Приняты'],
           ['rejected', 'Отклонены'], ['cancelled', 'Отменены клиентом'],
         ] },
       ],
@@ -1249,8 +1156,8 @@
       emptyText: 'Заявок не нашлось',
       renderItem: (b) => el('div', { class: 'item' },
         el('div', { class: 'grow' },
-          el('div', { class: 'title', text: (b.subject || '—') + (b.venue_name ? ` · ${b.venue_name}` : '') }),
-          el('div', { class: 'meta', text: `на ${fmtDay(b.event_date)} · гостей ${b.guests_count} · ${fmtMoney(b.price_at_booking)}` + (b.event_type ? ` · ${b.event_type}` : '') }),
+          el('div', { class: 'title', text: b.subject || '—' }),
+          el('div', { class: 'meta', text: `к ${fmtDay(b.event_date)}` + (b.address ? ` · ${b.address}` : '') }),
           el('div', { class: 'meta' }, 'Клиент: ',
             entityLink(person(b.client_phone, b.client_name), '#users/' + b.client_id, () => openUser(b.client_id)),
             ` · создана ${fmtDate(b.created_at)}`),
@@ -1274,7 +1181,7 @@
       emptyText: 'Отзывов не нашлось',
       renderItem: (r, reload) => el('div', { class: 'item' },
         el('div', { class: 'grow' },
-          el('div', { class: 'title', text: `${stars(r.rating)} ${r.subject || '—'}` + (r.venue_name ? ` · ${r.venue_name}` : '') }),
+          el('div', { class: 'title', text: `${stars(r.rating)} ${r.subject || '—'}` }),
           el('div', { class: 'meta' },
             entityLink(person(r.author_phone, r.author_name), '#users/' + r.author_id, () => openUser(r.author_id, reload)),
             ` · ${fmtDate(r.created_at)}`),
@@ -1474,8 +1381,7 @@
     ['overview', 'Обзор', viewOverview],
     ['complaints', 'Жалобы', viewComplaints],
     ['users', 'Пользователи', viewUsers],
-    ['halls', 'Залы', viewHalls],
-    ['providers', 'Исполнители', viewProviders],
+    ['providers', 'Объявления', viewProviders],
     ['bookings', 'Заявки', viewBookings],
     ['reviews', 'Отзывы', viewReviews],
     ['logs', 'Журнал ошибок', viewLogs],
@@ -1484,7 +1390,7 @@
   ];
 
   // Разделы, где у записи есть своё окно: #users/57 откроет его сразу.
-  const OPENERS = { users: openUser, halls: openHall, providers: openProvider, complaints: openComplaint };
+  const OPENERS = { users: openUser, providers: openProvider, complaints: openComplaint };
 
   let routeSeq = 0;
   async function route() {

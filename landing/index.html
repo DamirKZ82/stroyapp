@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>СтройАпп — стройматериалы и мастера по всему Казахстану</title>
+<meta name="description" content="Сравнивайте цены на стройматериалы в магазинах своего города, находите проверенные бригады с отзывами и фото работ. Бесплатно для клиентов. Магазинам и бригадам — 0% комиссии.">
+<meta property="og:title" content="СтройАпп — стройматериалы и мастера в одном приложении">
+<meta property="og:description" content="Цены магазинов, бригады с отзывами и фото работ, заказы через вашего мастера. Бесплатно для клиентов.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ru_KZ">
+<meta name="theme-color" content="#1E4E79">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<a class="skip" href="#main">К содержимому</a>
+
+<header class="header">
+  <div class="wrap header__row">
+    <a class="brand" href="#top" aria-label="СтройАпп, на главную">
+      <img src="logo.svg" alt="" width="36" height="36">
+      <span>СтройАпп</span>
+    </a>
+    <nav class="nav" aria-label="Разделы">
+      <a href="#clients">Клиентам</a>
+      <a href="#master">Ваш мастер</a>
+      <a href="#partners">Магазинам и бригадам</a>
+      <a href="#pricing">Тарифы</a>
+      <a href="#faq">Вопросы</a>
+    </nav>
+    <a class="btn btn--primary btn--sm header__cta" href="#download">Скачать</a>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ================= Первый экран ================= -->
+<section class="hero" id="top">
+  <div class="wrap hero__grid">
+    <div class="hero__text">
+      <p class="eyebrow">Для ремонта и стройки · весь Казахстан</p>
+      <h1>Стройматериалы и&nbsp;мастера — в&nbsp;одном приложении</h1>
+      <p class="lead">Сравнивайте цену нужного товара в магазинах своего города, находите бригады с отзывами и фото работ. Для клиентов — бесплатно.</p>
+      <div class="hero__actions" id="download">
+        <a class="store" href="#" data-store="appstore" aria-label="Скачать в App Store">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.6s-2.5-1-2.5-3.8zM14.1 5.8c.6-.8 1.1-1.9 1-3-1 0-2.1.6-2.8 1.4-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.5 2.8-1.3z"/></svg>
+          <span><small>Загрузите в</small>App Store</span>
+        </a>
+        <a class="store" href="#" data-store="googleplay" aria-label="Скачать в Google Play">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.6 2.3c-.2.2-.3.6-.3 1v17.4c0 .4.1.8.3 1l9.7-9.7-9.7-9.7zm10.7 10.7 2.8 2.8-11.9 6.8c-.4.2-.8.3-1.1.2l10.2-9.8zm0-2L4.1 1.2c.3-.1.7 0 1.1.2l11.9 6.8-2.8 2.8zm3.7 3.7-3-3 3-3 3.4 1.9c1 .6 1 1.6 0 2.2L18 14.7z"/></svg>
+          <span><small>Доступно в</small>Google Play</span>
+        </a>
+      </div>
+      <p class="hero__partner">Продаёте материалы или делаете ремонт? <a href="#partners">Станьте партнёром — 0% комиссии&nbsp;→</a></p>
+    </div>
+
+    <!-- Макет экрана: сравнение цены одного товара. Цены — иллюстрация. -->
+    <div class="phone" role="img" aria-label="Пример экрана приложения: цена одного товара в разных магазинах города">
+      <div class="phone__screen">
+        <div class="ph-top">
+          <span class="ph-city">📍 Астана</span>
+          <span class="ph-tag">пример</span>
+        </div>
+        <div class="ph-search">Цемент М500, 50 кг</div>
+        <p class="ph-caption">Цена в 4 магазинах</p>
+        <ul class="ph-list">
+          <li class="ph-item ph-item--best">
+            <span class="ph-shop">Стройдвор<small>Сарыарка · 2,1 км</small></span>
+            <span class="ph-price">2 650 ₸<em>дешевле всех</em></span>
+          </li>
+          <li class="ph-item">
+            <span class="ph-shop">Мир ремонта<small>Есиль · 4,8 км</small></span>
+            <span class="ph-price">2 790 ₸</span>
+          </li>
+          <li class="ph-item">
+            <span class="ph-shop">База «Строитель»<small>Байконур · 6,3 км</small></span>
+            <span class="ph-price">2 840 ₸</span>
+          </li>
+          <li class="ph-item">
+            <span class="ph-shop">Дом и сад<small>Алматы р-н · 7,0 км</small></span>
+            <span class="ph-price">2 900 ₸</span>
+          </li>
+        </ul>
+        <div class="ph-crew">
+          <div class="ph-avatar" aria-hidden="true">АК</div>
+          <div class="ph-crew__text">
+            <strong>Бригада Асхата <span class="badge-ok">✓ Проверенный</span></strong>
+            <small>★ 4,9 · 37 отзывов · 120 фото работ</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Цифры доверия ================= -->
+<section class="strip" aria-label="Коротко о сервисе">
+  <div class="wrap strip__row">
+    <div><strong>Все города</strong><span>Казахстана, фильтр по своему</span></div>
+    <div><strong>0 ₸</strong><span>для клиентов, без скрытых платежей</span></div>
+    <div><strong>0%</strong><span>комиссии с продаж для магазинов и бригад</span></div>
+    <div><strong>Напрямую</strong><span>оплата продавцу, без посредников</span></div>
+  </div>
+</section>
+
+<!-- ================= Клиентам ================= -->
+<section class="section" id="clients">
+  <div class="wrap">
+    <p class="eyebrow">Клиентам</p>
+    <h2>Ремонт без беготни по рынкам</h2>
+    <p class="section__lead">Всё, что нужно для ремонта, собрано в одном месте: магазины с прайс-листами и мастера, которым можно доверять.</p>
+
+    <div class="cards">
+      <article class="card">
+        <div class="card__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2" /></svg>
+        </div>
+        <h3>Сравнение цен на товар</h3>
+        <p>Ищите конкретную позицию — например, гипсокартон или ламинат — и сразу видите, сколько она стоит в каждом магазине.</p>
+      </article>
+      <article class="card">
+        <div class="card__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+        </div>
+        <h3>Только ваш город</h3>
+        <p>Алматы, Астана, Шымкент или любой другой город: фильтр показывает магазины и бригады рядом с вами.</p>
+      </article>
+      <article class="card">
+        <div class="card__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/></svg>
+        </div>
+        <h3>Мастера с фото работ</h3>
+        <p>Отзывы реальных клиентов и портфолио бригады: смотрите, как они уже сделали ремонт у других.</p>
+      </article>
+      <article class="card">
+        <div class="card__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6l-8-3z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+        </div>
+        <h3>Значок «Проверенный»</h3>
+        <p>Магазины и бригады с этим значком прошли проверку документов. Так проще выбрать, кому доверить ремонт.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Ваш мастер ================= -->
+<section class="section section--alt" id="master">
+  <div class="wrap master">
+    <div class="master__text">
+      <p class="eyebrow">Ваш мастер в приложении</p>
+      <h2>Мастер собирает заказ — вы&nbsp;решаете, что купить</h2>
+      <p class="section__lead">Мастер лучше знает, какие материалы нужны. Добавьте его к своему ремонту: он подберёт товары в магазинах, а вы увидите каждую позицию и цену до покупки.</p>
+      <ol class="steps">
+        <li>
+          <span class="steps__n">1</span>
+          <div><strong>Добавьте своего мастера</strong><p>Пригласите бригаду, с которой уже работаете, или выберите новую в приложении.</p></div>
+        </li>
+        <li>
+          <span class="steps__n">2</span>
+          <div><strong>Мастер собирает заказ</strong><p>Он выбирает материалы и магазины от вашего имени — получается готовый список для объекта.</p></div>
+        </li>
+        <li>
+          <span class="steps__n">3</span>
+          <div><strong>Вы подтверждаете</strong><p>Ничего не покупается без вас. Оплата идёт напрямую магазину, расходы под контролем.</p></div>
+        </li>
+      </ol>
+    </div>
+    <div class="order" role="img" aria-label="Пример заказа, собранного мастером: три позиции и кнопка «Подтвердить»">
+      <div class="order__head">
+        <span>Заказ для объекта<strong>Квартира на Туран, 24</strong></span>
+        <span class="ph-tag">пример</span>
+      </div>
+      <p class="order__from">Собрал мастер: <b>Бригада Асхата</b></p>
+      <ul class="order__list">
+        <li><span>Гипсокартон влагостойкий, 12,5 мм</span><b>× 40</b></li>
+        <li><span>Профиль ПП 60×27, 3 м</span><b>× 60</b></li>
+        <li><span>Шпаклёвка финишная, 25 кг</span><b>× 6</b></li>
+      </ul>
+      <div class="order__actions">
+        <span class="btn btn--ghost btn--sm">Изменить</span>
+        <span class="btn btn--accent btn--sm">Подтвердить</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Партнёрам ================= -->
+<section class="section" id="partners">
+  <div class="wrap">
+    <p class="eyebrow">Магазинам и бригадам</p>
+    <h2>Новые клиенты без комиссии с продаж</h2>
+    <p class="section__lead">Вы платите фиксированную подписку раз в месяц и не отдаёте процент с каждой сделки, как на маркетплейсах. Клиент платит вам напрямую.</p>
+
+    <div class="split">
+      <article class="panel">
+        <h3>🧱 Магазинам стройматериалов</h3>
+        <ul class="ticks">
+          <li>Прайс-лист в приложении: клиенты находят ваш товар по названию</li>
+          <li>Ваша цена рядом с ценами конкурентов — выигрывает выгодное предложение</li>
+          <li>Веб-кабинет для обработки заказов: заявки, статусы, прайс</li>
+          <li>Заказы от мастеров, которые закупают материалы для своих клиентов</li>
+        </ul>
+      </article>
+      <article class="panel">
+        <h3>🛠 Бригадам и мастерам</h3>
+        <ul class="ticks">
+          <li>Профиль с фото работ, отзывами и значком «Проверенный»</li>
+          <li>Заявки от клиентов вашего города, переписка в приложении</li>
+          <li>Сбор материалов для клиента в один заказ — без звонков по магазинам</li>
+          <li>Клиент подтверждает заказ сам, и вам не нужно отвечать за чужие деньги</li>
+        </ul>
+      </article>
+    </div>
+
+    <div class="compare" role="table" aria-label="Сравнение: СтройАпп и маркетплейс с комиссией">
+      <div class="compare__row compare__row--head" role="row">
+        <span role="columnheader"></span>
+        <span role="columnheader">Маркетплейс с комиссией</span>
+        <span role="columnheader">СтройАпп</span>
+      </div>
+      <div class="compare__row" role="row">
+        <span role="rowheader">Плата</span>
+        <span role="cell">Процент с каждой продажи</span>
+        <span role="cell"><b>Фиксированная подписка</b></span>
+      </div>
+      <div class="compare__row" role="row">
+        <span role="rowheader">Чем больше продаёте</span>
+        <span role="cell">Тем больше платите</span>
+        <span role="cell"><b>Платите столько же</b></span>
+      </div>
+      <div class="compare__row" role="row">
+        <span role="rowheader">Деньги клиента</span>
+        <span role="cell">Идут через площадку</span>
+        <span role="cell"><b>Сразу вам</b></span>
+      </div>
+      <div class="compare__row" role="row">
+        <span role="rowheader">Начать</span>
+        <span role="cell">—</span>
+        <span role="cell"><b>Бесплатный пробный период</b></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Тарифы ================= -->
+<!-- Цены тарифов ещё не утверждены: замените «— ₸» и состав тарифов, когда будут решены. -->
+<section class="section section--alt" id="pricing">
+  <div class="wrap">
+    <p class="eyebrow">Тарифы для партнёров</p>
+    <h2>Фиксированная плата. 0% комиссии.</h2>
+    <p class="section__lead">Начните с бесплатного пробного периода. Для клиентов приложение бесплатно всегда.</p>
+
+    <div class="plans">
+      <article class="plan">
+        <h3>Пробный</h3>
+        <p class="plan__price">0 ₸<small> · первый период</small></p>
+        <ul class="ticks">
+          <li>Профиль магазина или бригады</li>
+          <li>Прайс-лист или портфолио</li>
+          <li>Заявки и переписка с клиентами</li>
+        </ul>
+        <a class="btn btn--ghost" href="#join">Попробовать</a>
+      </article>
+      <article class="plan plan--main">
+        <span class="plan__flag">Основной</span>
+        <h3>Базовый</h3>
+        <p class="plan__price">— ₸<small> / мес</small></p>
+        <ul class="ticks">
+          <li>Всё из пробного</li>
+          <li>Веб-кабинет для заказов</li>
+          <li>Заказы от мастеров клиентов</li>
+        </ul>
+        <a class="btn btn--primary" href="#join">Подключиться</a>
+      </article>
+      <article class="plan">
+        <h3>Расширенный</h3>
+        <p class="plan__price">— ₸<small> / мес</small></p>
+        <ul class="ticks">
+          <li>Всё из базового</li>
+          <li>Значок «Проверенный»</li>
+          <li>Продвижение в поиске</li>
+          <li>Больший прайс-лист</li>
+        </ul>
+        <a class="btn btn--ghost" href="#join">Подключиться</a>
+      </article>
+    </div>
+    <p class="note">Стоимость тарифов уточняется. Оставьте заявку — сообщим условия на старте.</p>
+  </div>
+</section>
+
+<!-- ================= Заявка партнёра ================= -->
+<section class="section" id="join">
+  <div class="wrap join">
+    <div>
+      <h2>Станьте партнёром СтройАпп</h2>
+      <p class="section__lead">Расскажите о магазине или бригаде — мы поможем загрузить прайс или портфолио и подключим пробный период.</p>
+    </div>
+    <form class="join__form" id="joinForm" novalidate>
+      <label>Кто вы
+        <select name="kind" required>
+          <option value="Магазин стройматериалов">Магазин стройматериалов</option>
+          <option value="Бригада / мастер">Бригада / мастер</option>
+        </select>
+      </label>
+      <label>Название или имя
+        <input name="name" required autocomplete="organization" placeholder="Например, Стройдвор">
+      </label>
+      <label>Город
+        <input name="city" required autocomplete="address-level2" placeholder="Например, Караганда">
+      </label>
+      <label>Телефон
+        <input name="phone" type="tel" required autocomplete="tel" placeholder="+7 7__ ___ __ __">
+      </label>
+      <button class="btn btn--accent" type="submit">Отправить заявку</button>
+      <p class="join__hint">Откроется ваша почта с готовым письмом. Можно написать и напрямую: <a href="mailto:supportstroyapp@gmail.com">supportstroyapp@gmail.com</a></p>
+    </form>
+  </div>
+</section>
+
+<!-- ================= Вопросы ================= -->
+<section class="section section--alt" id="faq">
+  <div class="wrap faq">
+    <h2>Частые вопросы</h2>
+    <details>
+      <summary>Сколько стоит приложение для клиента?</summary>
+      <p>Нисколько. Поиск, сравнение цен, переписка и заказы для клиентов бесплатны.</p>
+    </details>
+    <details>
+      <summary>Как я оплачиваю материалы?</summary>
+      <p>Напрямую магазину — так, как вы договоритесь: наличными, картой или переводом. Деньги не проходят через СтройАпп.</p>
+    </details>
+    <details>
+      <summary>Может ли мастер потратить мои деньги без спроса?</summary>
+      <p>Нет. Мастер только собирает заказ. Пока вы его не подтвердите, магазин не получит заказ.</p>
+    </details>
+    <details>
+      <summary>В каких городах работает СтройАпп?</summary>
+      <p>По всему Казахстану. В поиске выберите свой город — и увидите магазины и бригады рядом.</p>
+    </details>
+    <details>
+      <summary>Что значит «Проверенный»?</summary>
+      <p>Магазин или бригада прошли проверку документов в СтройАпп. Отзывы клиентов при этом показываются все, их нельзя купить.</p>
+    </details>
+    <details>
+      <summary>Берёте ли вы процент с продаж?</summary>
+      <p>Нет. Магазины и бригады платят только фиксированную ежемесячную подписку, комиссия с продаж — 0%.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ================= Финальный призыв ================= -->
+<section class="cta">
+  <div class="wrap cta__row">
+    <div>
+      <h2>Начните ремонт с СтройАпп</h2>
+      <p>Скачайте приложение и найдите материалы и мастеров в своём городе.</p>
+    </div>
+    <div class="cta__actions">
+      <a class="btn btn--light" href="#download">Скачать приложение</a>
+      <a class="btn btn--outline-light" href="#join">Стать партнёром</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer__row">
+    <a class="brand brand--small" href="#top">
+      <img src="logo.svg" alt="" width="28" height="28">
+      <span>СтройАпп</span>
+    </a>
+    <nav class="footer__links" aria-label="Документы и связь">
+      <a href="https://api.stroyapp.kz/terms">Условия использования</a>
+      <a href="https://api.stroyapp.kz/privacy">Политика конфиденциальности</a>
+      <a href="mailto:supportstroyapp@gmail.com">supportstroyapp@gmail.com</a>
+    </nav>
+    <p class="footer__copy">© <span id="year">2026</span> СтройАпп · Казахстан</p>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>

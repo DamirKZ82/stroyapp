@@ -96,6 +96,27 @@ config = {
         'login_window_minutes': 15,
     },
 
+    # Тариф продавца (libs/plans.py). Клиентам всё бесплатно.
+    'plans': {
+        'trial_days': 30,
+        # Позиций прайса: в бесплатном тарифе после пробного периода и в Pro.
+        'free_items': 30,
+        'pro_items': 500,
+        # Цена Pro за месяц, ₸. За 3 и 12 месяцев — скидка (PERIODS в libs/plans.py).
+        'pro_month_price': int(os.environ.get('PRO_MONTH_PRICE', '9900')),
+    },
+
+    # Эквайринг для оплаты тарифа картой (libs/payments.py) — Freedom Pay.
+    # Без merchant_id и secret оплата на проде отвечает «пока недоступна»,
+    # в разработке вместо неё — тестовая страница «Оплатить».
+    'freedompay': {
+        'merchant_id': os.environ.get('FREEDOMPAY_MERCHANT_ID', ''),
+        'secret': os.environ.get('FREEDOMPAY_SECRET', ''),
+        'api_url': os.environ.get('FREEDOMPAY_API_URL', 'https://api.freedompay.kz'),
+        # 1 — тестовый режим кассы (деньги не списываются).
+        'testing_mode': os.environ.get('FREEDOMPAY_TESTING', '0'),
+    },
+
     'telegram': {
         # Если токен не задан — уведомления просто не отправляются (без падения).
         'bot_token': os.environ.get('TELEGRAM_BOT_TOKEN', ''),

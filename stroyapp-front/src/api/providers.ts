@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 import type {
   CategoryBrief, City, Photo, PriceItem, PriceUnit,
-  ProviderAttr, PublicProviderDetails,
+  ProviderAttr, ProviderVerification, PublicProviderDetails,
 } from './types';
 
 /** Время на загрузку пачки фото: две минуты вместо общих двадцати секунд. */
@@ -42,13 +42,18 @@ export interface OwnerProviderFull {
   photos: Photo[];
   attrs: ProviderAttr[];
   items: PriceItem[];
+  /** БИН/ИИН и проверка админом — для значка «Проверенный». */
+  verification?: ProviderVerification;
 }
 
-export interface MyProvider extends Omit<OwnerProviderFull, 'photos' | 'attrs' | 'items'> {
+export interface MyProvider
+  extends Omit<OwnerProviderFull, 'photos' | 'attrs' | 'items' | 'verification'> {
   category: CategoryBrief;
   main_thumb: string | null;
   /** Позиций в прайсе. */
   items_count: number;
+  /** Админ сверил БИН/ИИН (значок клиентам виден, только пока оплачен Pro). */
+  verified?: boolean;
 }
 
 export interface UploadedPhoto {

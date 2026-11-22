@@ -244,6 +244,9 @@ docker compose logs postgres
 | `TELEGRAM_BOT_TOKEN` | нет | Уведомления админу о новых заявках |
 | `TELEGRAM_CHAT_ID` | нет | Куда слать уведомления |
 | `TWOGIS_API_KEY` | нет | Для будущей интеграции 2ГИС |
+| `FREEDOMPAY_MERCHANT_ID`, `FREEDOMPAY_SECRET` | нет | Касса Freedom Pay для оплаты тарифа Pro. Без них оплата «пока недоступна», Pro можно подарить из админки |
+| `FREEDOMPAY_TESTING` | нет | `1` — тестовый режим кассы, деньги не списываются. Для первой проверки |
+| `PRO_MONTH_PRICE` | нет | Цена Pro за месяц, ₸ (по умолчанию 9900) |
 
 ### Меняем секреты
 

@@ -17,6 +17,12 @@
         &sort=price_asc|price_desc|rating_desc
 
     GET /search/providers/{guid} — карточка объявления с фото, признаками и прайсом
+
+Тариф продавца (libs/plans.py) влияет на выдачу так:
+    - видны только позиции прайса в пределах лимита тарифа;
+    - при сортировке «по рейтингу» объявления с оплаченным Pro идут первыми
+      (продвижение). Сортировки по цене и сравнение цен — честные, без него;
+    - verified — значок «Проверенный».
 """
 from typing import Optional
 
@@ -25,6 +31,8 @@ from fastapi import APIRouter, Query
 from connections.connect_postgres import query_db
 from handlers.h01_errors import WarnException
 from libs.common import fit_to_sql
+from libs.date import get_timestamp_now
+from libs.plans import paid_sql, verified_sql, visible_item_sql
 
 
 router = APIRouter(prefix='/search')
@@ -97,13 +105,21 @@ async def _common_where(
     return where
 
 
-# Минимальная цена из прайса, иначе «цена от» из самого объявления.
-# Единица — та, что у самой дешёвой позиции.
-_MIN_PRICE_JOIN = """
+def _now_sql() -> str:
+    return fit_to_sql(get_timestamp_now())
+
+
+def _min_price_join(now: str) -> str:
+    """
+    Минимальная цена из видимой части прайса, иначе «цена от» из самого
+    объявления. Единица — та, что у самой дешёвой позиции.
+    """
+    return f"""
     LEFT JOIN LATERAL (
         SELECT pi.price, pi.unit
         FROM provider_items pi
         WHERE pi.provider_id = p.id AND pi.price IS NOT NULL
+          AND {visible_item_sql('pi', 'p.owner_id', now)}
         ORDER BY pi.price, pi.id
         LIMIT 1
     ) mp ON true
@@ -144,6 +160,7 @@ async def search_providers(
         raise WarnException(400, 'Укажите kind или category_id')
 
     where = await _common_where(kind, category_id, city_id)
+    now = _now_sql()
     q = _clean_q(q)
     attr_list = _parse_id_csv(attr_ids, 'attr_ids')
 
@@ -156,6 +173,7 @@ async def search_providers(
             OR EXISTS (
                 SELECT 1 FROM provider_items pi
                 WHERE pi.provider_id = p.id AND lower(pi.name) LIKE {pattern}
+                  AND {visible_item_sql('pi', 'p.owner_id', now)}
             )
         )""")
     if price_max is not None:
@@ -175,7 +193,8 @@ async def search_providers(
     elif sort == 'price_desc':
         order_by = f'{_PRICE_EXPR} DESC NULLS LAST, p.id DESC'
     else:
-        order_by = 'avg_rating DESC NULLS LAST, reviews_count DESC, p.id DESC'
+        # Продвижение: оплаченный Pro — выше, внутри групп — по рейтингу.
+        order_by = 'promoted DESC, avg_rating DESC NULLS LAST, reviews_count DESC, p.id DESC'
 
     offset = (page - 1) * page_size
 
@@ -201,7 +220,9 @@ async def search_providers(
             ph.thumb_path AS main_thumb,
             ph.file_path AS main_photo,
             COALESCE(r.avg_rating, 0)::float AS avg_rating,
-            COALESCE(r.reviews_count, 0)::int AS reviews_count
+            COALESCE(r.reviews_count, 0)::int AS reviews_count,
+            {paid_sql('p.owner_id', now)} AS promoted,
+            {verified_sql('p', now)} AS verified
         FROM providers p
         JOIN categories cat ON cat.id = p.category_id
         JOIN cities c ON c.id = p.city_id
@@ -212,7 +233,7 @@ async def search_providers(
             ORDER BY sort_order, id
             LIMIT 1
         ) ph ON true
-        {_MIN_PRICE_JOIN}
+        {_min_price_join(now)}
         {_RATING_JOIN}
         WHERE {where_sql}
         ORDER BY {order_by}
@@ -223,7 +244,7 @@ async def search_providers(
         SELECT COUNT(*)::int AS n
         FROM providers p
         JOIN categories cat ON cat.id = p.category_id
-        {_MIN_PRICE_JOIN}
+        {_min_price_join(now)}
         WHERE {where_sql}
     """)
     total = cnt[0]['n']
@@ -241,8 +262,10 @@ async def search_providers(
                            ORDER BY pi.price ASC NULLS LAST, pi.sort_order, pi.id
                        ) AS rn
                 FROM provider_items pi
+                JOIN providers p ON p.id = pi.provider_id
                 WHERE pi.provider_id IN ({ids_sql})
                   AND lower(pi.name) LIKE {pattern}
+                  AND {visible_item_sql('pi', 'p.owner_id', now)}
             ) t
             WHERE rn <= {MATCHED_ITEMS_MAX}
             ORDER BY provider_id, rn
@@ -264,6 +287,7 @@ async def search_providers(
                 'price_unit': r['price_unit'],
                 'latitude': _coord(r['latitude']),
                 'longitude': _coord(r['longitude']),
+                'verified': r['verified'],
             },
             'category': {
                 'id': r['category_id'],
@@ -316,7 +340,9 @@ async def search_items(
         raise WarnException(400, 'Введите хотя бы 2 символа')
 
     where = await _common_where(kind, category_id, city_id)
+    now = _now_sql()
     where.append(f"lower(pi.name) LIKE {fit_to_sql(_like_pattern(q))}")
+    where.append(visible_item_sql('pi', 'p.owner_id', now))
     if price_max is not None:
         where.append(f"(pi.price IS NOT NULL AND pi.price <= {fit_to_sql(price_max)})")
     where_sql = ' AND '.join(where)
@@ -338,7 +364,8 @@ async def search_items(
             c.id AS city_id, c.name_ru AS city_name_ru, c.name_kz AS city_name_kz,
             ph.thumb_path AS main_thumb,
             COALESCE(r.avg_rating, 0)::float AS avg_rating,
-            COALESCE(r.reviews_count, 0)::int AS reviews_count
+            COALESCE(r.reviews_count, 0)::int AS reviews_count,
+            {verified_sql('p', now)} AS verified
         FROM provider_items pi
         JOIN providers p ON p.id = pi.provider_id
         JOIN categories cat ON cat.id = p.category_id
@@ -373,6 +400,7 @@ async def search_items(
             'guid': r['provider_guid'],
             'name': r['provider_name'],
             'address': r['address'],
+            'verified': r['verified'],
         },
         'category': {
             'id': r['category_id'],
@@ -407,10 +435,12 @@ async def search_items(
 
 @router.get('/providers/{guid}')
 async def public_provider_details(guid: str):
+    now = _now_sql()
     rows = await query_db(f"""
         SELECT p.id, p.guid, p.name, p.description, p.phone, p.address,
                p.latitude, p.longitude, p.price_from, p.price_unit,
                p.is_active, p.created_at, p.updated_at,
+               {verified_sql('p', now)} AS verified,
                cat.id AS category_id, cat.code AS category_code, cat.kind AS category_kind,
                cat.name_ru AS category_name_ru, cat.name_kz AS category_name_kz,
                c.id AS city_id, c.name_ru AS city_name_ru, c.name_kz AS city_name_kz
@@ -439,10 +469,12 @@ async def public_provider_details(guid: str):
         ORDER BY a.sort_order, a.id
     """)
     price_items = await query_db(f"""
-        SELECT guid, name, unit, price, sort_order
-        FROM provider_items
-        WHERE provider_id = {fit_to_sql(r['id'])}
-        ORDER BY sort_order, id
+        SELECT pi.guid, pi.name, pi.unit, pi.price, pi.sort_order
+        FROM provider_items pi
+        JOIN providers p ON p.id = pi.provider_id
+        WHERE pi.provider_id = {fit_to_sql(r['id'])}
+          AND {visible_item_sql('pi', 'p.owner_id', now)}
+        ORDER BY pi.sort_order, pi.id
     """)
 
     return {
@@ -458,6 +490,7 @@ async def public_provider_details(guid: str):
             'price_from': r['price_from'],
             'price_unit': r['price_unit'],
             'is_active': r['is_active'],
+            'verified': r['verified'],
             'created_at': r['created_at'],
             'updated_at': r['updated_at'],
             'photos': photos,

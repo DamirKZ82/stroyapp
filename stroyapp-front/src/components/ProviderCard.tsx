@@ -42,6 +42,7 @@ export function ProviderCard({ item, onPress, onToggleFavorite, isFavorite }: Pr
       title={item.provider.name}
       subtitle={`${dictName(item.category, lang)} · ${dictName(item.city, lang)}`}
       rating={item.rating}
+      verified={!!item.provider.verified}
       price={priceFrom == null ? null : formatPrice(priceFrom)}
       priceHint={priceHint}
       extraLines={extraLines}

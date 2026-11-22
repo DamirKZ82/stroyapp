@@ -13,6 +13,7 @@ from connections.connect_postgres import query_db
 from handlers.h01_errors import WarnException
 from handlers.h03_auth import auth_user
 from libs.common import fit_to_sql
+from libs.plans import visible_item_sql
 from libs.date import get_timestamp_now
 from libs.ownership import get_provider_by_guid
 
@@ -50,6 +51,7 @@ async def _provider_favorites(user_id: int) -> list[dict]:
             SELECT pi.price, pi.unit
             FROM provider_items pi
             WHERE pi.provider_id = p.id AND pi.price IS NOT NULL
+              AND {visible_item_sql('pi', 'p.owner_id', fit_to_sql(get_timestamp_now()))}
             ORDER BY pi.price, pi.id
             LIMIT 1
         ) mp ON true

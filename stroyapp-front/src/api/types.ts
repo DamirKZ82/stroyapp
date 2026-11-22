@@ -114,6 +114,8 @@ export interface ProviderBrief {
   latitude?: number | null;
   longitude?: number | null;
   is_active?: boolean;
+  /** «Проверенный»: админ сверил БИН/ИИН и у владельца оплачен Pro. */
+  verified?: boolean;
 }
 
 export interface ProviderCardData {
@@ -170,6 +172,8 @@ export interface PublicProviderDetails {
   items: PriceItem[];
   category: CategoryBrief;
   city: City;
+  /** «Проверенный»: админ сверил БИН/ИИН и у владельца оплачен Pro. */
+  verified?: boolean;
 }
 
 export interface ApiErrorBody {
@@ -234,4 +238,47 @@ export interface ReviewsResponse {
 export interface FavoriteItem extends ProviderCardData {
   type: 'provider';
   favorited_at: string;
+}
+
+// ---------------------- Subscription ----------------------
+
+/**
+ * Тариф продавца. none — объявлений ещё не было; trial — пробный период;
+ * free — пробный кончился, Pro не оплачен; pro — оплачен.
+ */
+export type PlanTier = 'none' | 'trial' | 'free' | 'pro';
+
+export interface SellerPlan {
+  tier: PlanTier;
+  trial_ends_at: string | null;
+  paid_until: string | null;
+  /** Сколько позиций прайса видно клиентам при этом тарифе. */
+  items_limit: number;
+  /** Выше в поиске при сортировке «по рейтингу». */
+  promoted: boolean;
+}
+
+export interface PlanOffer {
+  trial_days: number;
+  free_items: number;
+  pro_items: number;
+  periods: { months: number; amount: number }[];
+  /** false — оплата картой пока не подключена. */
+  can_pay: boolean;
+}
+
+export interface PlanPayment {
+  guid: string;
+  months: number;
+  amount: number;
+  status: 'paid' | 'failed';
+  gateway: string;
+  created_at: string;
+  paid_at: string | null;
+}
+
+export interface ProviderVerification {
+  bin: string | null;
+  requested_at: string | null;
+  verified_at: string | null;
 }

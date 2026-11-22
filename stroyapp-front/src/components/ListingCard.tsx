@@ -24,6 +24,8 @@ export interface ListingCardProps {
   /** Вторая строка: «категория · город». */
   subtitle: string;
   rating?: { avg: number; count: number } | null;
+  /** Значок «Проверенный» после названия: админ сверил БИН/ИИН и оплачен Pro. */
+  verified?: boolean;
   /** Плашка занятости поверх фото; null — поиск без даты, плашки нет. */
   badge?: ListingBadge | null;
   /** Готовая строка цены. Пусто — цены нет, priceHint идёт вместо неё. */
@@ -56,6 +58,7 @@ export function ListingCard({
   title,
   subtitle,
   rating,
+  verified = false,
   badge,
   price,
   priceHint,
@@ -77,6 +80,7 @@ export function ListingCard({
   // отзывы. Название первым: по нему ищут нужное, листая список.
   const a11yLabel = [
     title,
+    verified ? t('provider.verified') : null,
     hasRating ? ratingLabel(t, rating.avg, rating.count) : null,
     subtitle,
     badge?.label,
@@ -127,9 +131,21 @@ export function ListingCard({
 
         <View style={styles.body}>
           <View style={styles.head}>
-            <Text style={styles.title} numberOfLines={1}>
-              {title}
-            </Text>
+            {/* Значок вплотную к названию: он про него, а не про рейтинг. */}
+            <View style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+              {verified ? (
+                <Icon
+                  name="check-decagram"
+                  size={18}
+                  color={colors.success}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                />
+              ) : null}
+            </View>
             {hasRating ? (
               <RatingInline
                 avg={rating.avg}
@@ -205,7 +221,8 @@ const makeStyles = (colors: ThemeColors) =>
     badgeTextBusy: { color: '#FFFFFF' },
     body: { padding: space.card, gap: 2 },
     head: { flexDirection: 'row', alignItems: 'center', gap: space.gap },
-    title: { flex: 1, minWidth: 0, fontSize: text.subtitle, fontWeight: '600', color: colors.text },
+    titleRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
+    title: { flexShrink: 1, minWidth: 0, fontSize: text.subtitle, fontWeight: '600', color: colors.text },
     rating: { flexShrink: 0 },
     subtitle: { fontSize: text.caption, color: colors.muted },
     priceBlock: { marginTop: 8, gap: 2 },

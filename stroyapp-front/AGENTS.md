@@ -262,6 +262,7 @@ router.setParams({ providerGuid }); // форма «создать» стала 
 | `nav.ts` | `pushOnce`, `useOnTop` |
 | `number.ts` | числовые поля форм: `onlyDigits`, `intOrNull` |
 | `phone.ts` | казахстанские номера: приведение, показ, маска ввода |
+| `payments.ts` | `PAY_IN_APP` — можно ли платить за тариф из приложения. На iOS нельзя (правила App Store): ни кнопок оплаты, ни цен, ни ссылок на оплату — Pro оплачивают в веб-кабинете `/cabinet` |
 | `photo.ts` | `photoUrl` — полный адрес фото по пути с сервера |
 | `pickPhotos.ts` | выбор фото из галереи для форм владельца |
 | `priceUnit.ts` | единицы прайса: `UNITS`, `UNIT_KEY`, `unitName` («м²»), `unitLabel` («за м²») |

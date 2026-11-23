@@ -21,6 +21,7 @@ import { useLang } from '@/utils/lang';
 import { openPage, writeEmail } from '@/utils/links';
 import { formatKzPhoneDisplay } from '@/utils/phone';
 import { pushOnce, useOnTop } from '@/utils/nav';
+import { PAY_IN_APP } from '@/utils/payments';
 
 /**
  * Вкладка «Профиль»: кто вошёл, язык, тема, разделы владельца и клиента,
@@ -212,7 +213,7 @@ export default function ProfileScreen() {
             onPress={() => pushOnce('/my-listings')}
           />
           <Row
-            title={t('subscription.title')}
+            title={PAY_IN_APP ? t('subscription.title') : t('subscription.title_plan')}
             icon="star-circle-outline"
             onPress={() => pushOnce('/subscription')}
           />

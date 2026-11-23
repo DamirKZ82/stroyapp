@@ -18,6 +18,7 @@ import { formatDateHuman, formatPrice } from '@/utils/format';
 import { useLang } from '@/utils/lang';
 import { openPage, writeEmail } from '@/utils/links';
 import { useOnTop } from '@/utils/nav';
+import { PAY_IN_APP } from '@/utils/payments';
 
 /** Таблица ключей, а не склейка: так их находит поиск по проекту. */
 const TIER_KEY = {
@@ -39,6 +40,9 @@ const PERIOD_KEY: Record<number, string> = {
  * Оплата идёт на странице платёжного сервиса в браузере. Результат сервер
  * узнаёт от самого сервиса, а не от приложения, поэтому экран просто
  * перечитывает тариф, когда человек возвращается из браузера.
+ *
+ * На iOS оплаты здесь нет вовсе (см. PAY_IN_APP): экран только показывает
+ * тариф, а оплачивают его в веб-кабинете продавца.
  */
 export default function SubscriptionScreen() {
   const { t } = useTranslation();
@@ -124,7 +128,10 @@ export default function SubscriptionScreen() {
     }
   };
 
-  const screenOptions = { headerShown: true, title: t('subscription.title') };
+  const screenOptions = {
+    headerShown: true,
+    title: PAY_IN_APP ? t('subscription.title') : t('subscription.title_plan'),
+  };
 
   if (loading) {
     return (
@@ -157,7 +164,7 @@ export default function SubscriptionScreen() {
         void load();
       }}
       footer={
-        offer ? (
+        offer && PAY_IN_APP ? (
           <View style={styles.footer}>
             {offer.can_pay ? (
               <Button
@@ -210,7 +217,11 @@ export default function SubscriptionScreen() {
             <Benefit icon="check-decagram" label={t('subscription.benefit_verified')} />
           </Card>
 
-          {offer.can_pay && period ? (
+          {!PAY_IN_APP ? (
+            <Card>
+              <Text style={styles.muted}>{t('subscription.pay_in_cabinet')}</Text>
+            </Card>
+          ) : offer.can_pay && period ? (
             <>
               <SectionLabel>{t('subscription.period_label')}</SectionLabel>
               <Segment<string>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1d1b1a" media="(prefers-color-scheme: dark)">
+<title>Кабинет продавца — StroyApp</title>
+<link rel="stylesheet" href="/cabinet/cabinet.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true">S</span><span>StroyApp <span class="muted">· кабинет продавца</span></span></div>
+  <div id="who" class="who" hidden>
+    <span id="who-name" class="muted"></span>
+    <button id="logout" class="btn ghost small" type="button">Выйти</button>
+  </div>
+</header>
+
+<!-- Вход: номер → код из SMS → (если нужно) имя и согласие с условиями.
+     Тот же вход, что в приложении: аккаунт один. -->
+<section id="login" class="narrow" hidden>
+  <form id="phone-form" class="panel" novalidate>
+    <h1>Вход в кабинет</h1>
+    <p class="muted">Здесь удобно разбирать заявки, отвечать клиентам, править прайс и оплачивать тариф с компьютера. Войдите с тем же номером, что в приложении.</p>
+    <label for="phone">Номер телефона</label>
+    <input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" spellcheck="false" placeholder="+7 701 123 45 67">
+    <button id="phone-submit" class="btn wide" type="submit">Получить код</button>
+    <div id="phone-error" class="error" role="alert"></div>
+  </form>
+
+  <form id="code-form" class="panel" hidden novalidate>
+    <h1>Код из SMS</h1>
+    <p class="muted">Отправили код на <b id="code-phone"></b>. <button id="code-back" class="link" type="button">Другой номер</button></p>
+    <label for="code">Код</label>
+    <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" maxlength="4" placeholder="0000">
+    <button id="code-submit" class="btn wide" type="submit">Войти</button>
+    <div id="code-error" class="error" role="alert"></div>
+  </form>
+
+  <form id="profile-form" class="panel" hidden novalidate>
+    <h1>Почти готово</h1>
+    <div id="name-block">
+      <label for="full-name">Как вас зовут</label>
+      <input id="full-name" name="name" autocomplete="name" maxlength="100">
+    </div>
+    <label id="terms-block" class="check">
+      <input id="terms" type="checkbox">
+      <span>Принимаю <a href="/terms" target="_blank" rel="noopener">условия использования</a> и <a href="/privacy" target="_blank" rel="noopener">политику конфиденциальности</a></span>
+    </label>
+    <button id="profile-submit" class="btn wide" type="submit">Продолжить</button>
+    <div id="profile-error" class="error" role="alert"></div>
+  </form>
+</section>
+
+<div id="app" hidden>
+  <nav class="tabs" aria-label="Разделы">
+    <a href="#bookings" data-view="bookings">Заявки <span id="badge-bookings" class="count" hidden></span></a>
+    <a href="#chats" data-view="chats">Сообщения <span id="badge-chats" class="count" hidden></span></a>
+    <a href="#price" data-view="price">Прайс</a>
+    <a href="#plan" data-view="plan">Тариф</a>
+  </nav>
+  <main id="view" class="wrap" tabindex="-1"></main>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="/cabinet/cabinet.js"></script>
+</body>
+</html>

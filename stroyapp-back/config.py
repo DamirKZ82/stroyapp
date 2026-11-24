@@ -6,6 +6,8 @@
 окружения для них — запасной вариант для старых выкладок.
 """
 import os
+from urllib.parse import unquote, urlsplit
+
 from dotenv import load_dotenv
 
 
@@ -13,6 +15,29 @@ from dotenv import load_dotenv
 # Если файл отсутствует — не падаем: переменные могут быть заданы средой
 # (например, на проде через systemd/docker).
 load_dotenv()
+
+
+def _db_from_url(url: str) -> dict:
+    """
+    DATABASE_URL вида postgresql[+драйвер]://user:pass@host:port/name. Если
+    задан, перекрывает DB_*: одна строка проще, чем пять переменных.
+    """
+    if not url:
+        return {}
+    u = urlsplit(url.strip())
+    if not u.scheme.startswith('postgres'):
+        raise RuntimeError('Config error: DATABASE_URL must start with postgresql://')
+    out = {
+        'host': u.hostname,
+        'port': u.port,
+        'name': unquote(u.path.lstrip('/')) or None,
+        'user': unquote(u.username) if u.username else None,
+        'password': unquote(u.password) if u.password else None,
+    }
+    return {k: v for k, v in out.items() if v}
+
+
+_db_url = _db_from_url(os.environ.get('DATABASE_URL', ''))
 
 
 def _require(value, name):
@@ -50,11 +75,12 @@ config = {
                   else (os.environ.get('PUBLIC_URL', '').strip().rstrip('/') or 'http://localhost:4000'),
 
     'db': {
-        'host': os.environ.get('DB_HOST', 'localhost'),
-        'port': int(os.environ.get('DB_PORT', '5432')),
-        'name': os.environ.get('DB_NAME', 'stroyapp'),
-        'user': os.environ.get('DB_USER', 'stroyapp_user'),
-        'password': _require(os.environ.get('DB_PASSWORD'), 'DB_PASSWORD'),
+        'host': _db_url.get('host') or os.environ.get('DB_HOST', 'localhost'),
+        'port': int(_db_url.get('port') or os.environ.get('DB_PORT', '5432')),
+        'name': _db_url.get('name') or os.environ.get('DB_NAME', 'stroyapp'),
+        'user': _db_url.get('user') or os.environ.get('DB_USER', 'stroyapp_user'),
+        'password': _require(_db_url.get('password') or os.environ.get('DB_PASSWORD'),
+                             'DB_PASSWORD or DATABASE_URL'),
         'min_size': 2,
         'max_size': 10,
     },

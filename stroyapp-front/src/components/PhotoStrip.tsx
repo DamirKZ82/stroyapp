@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRef } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { FILL, radius, type ThemeColors } from '@/theme';
@@ -65,7 +65,7 @@ export function PhotoStrip({
   // прокрутки человек после выбора не видит, что что-то добавилось.
   // Считаем в onContentSizeChange, а не в useEffect: в эффекте ширина
   // содержимого ещё старая и scrollToEnd останавливается не доезжая.
-  const scroller = useRef<ScrollView>(null);
+  const scroller = useRef<ScrollViewInstance>(null);
   const shown = useRef(photos.length);
   const followNewPhotos = () => {
     if (photos.length > shown.current) scroller.current?.scrollToEnd({ animated: true });

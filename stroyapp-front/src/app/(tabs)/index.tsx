@@ -574,10 +574,10 @@ export default function SearchScreen() {
             <Button label={t('common.retry')} variant="outline" onPress={reload} />
           ) : !loading ? (
             <EmptyState title={t('search.no_results')} subtitle={t('search.no_results_hint')} />
-          ) : null
+          ) : undefined
         }
         ListFooterComponent={
-          loadingMore ? <ActivityIndicator color={colors.primary} style={styles.more} /> : null
+          loadingMore ? <ActivityIndicator color={colors.primary} style={styles.more} /> : undefined
         }
         refreshControl={
           <RefreshControl

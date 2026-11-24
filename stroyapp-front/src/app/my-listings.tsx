@@ -208,7 +208,7 @@ export default function MyListingsScreen() {
           />
         )}
       </View>
-    ) : null;
+    ) : undefined;
 
   return (
     <Screen>
@@ -229,7 +229,7 @@ export default function MyListingsScreen() {
         ListHeaderComponent={header}
         ListEmptyComponent={
           // При ошибке «объявлений нет» было бы неправдой: мы этого не знаем.
-          error ? null : (
+          error ? undefined : (
             <EmptyState
               title={t('owner.listings_empty_title')}
               subtitle={t('owner.listings_empty_hint')}

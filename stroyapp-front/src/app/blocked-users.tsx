@@ -211,7 +211,7 @@ export default function BlockedUsersScreen() {
         }
         // Пустой заголовок списку не отдаём: обёртка нулевой высоты всё
         // равно получила бы свой gap, и первая карточка съехала бы вниз.
-        ListHeaderComponent={error ? <ErrorBanner message={error} /> : null}
+        ListHeaderComponent={error ? <ErrorBanner message={error} /> : undefined}
         // Пока список не пришёл, «никого не заблокировали» было бы неправдой.
         // Вместо него — кнопка: жест «потянуть» на пустом экране не очевиден.
         ListEmptyComponent={

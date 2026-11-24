@@ -147,7 +147,7 @@ export function CityPicker({
               </Text>
               {selectedId == null ? <Icon name="check" size={22} color={colors.primary} /> : null}
             </Pressable>
-          ) : null
+          ) : undefined
         }
         style={[styles.list, { height: listHeight }]}
         // Без этого первое нажатие на город при открытой клавиатуре только

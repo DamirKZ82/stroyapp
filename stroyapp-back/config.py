@@ -43,7 +43,11 @@ config = {
     # из заголовка Host запроса: его присылает клиент, и с чужим адресом
     # уведомление стало бы приманкой на поддельную страницу входа.
     # Пусто — уведомления уходят без ссылки.
-    'public_url': 'https://api.stroyapp.kz' if is_prod else '' if is_stage else 'http://localhost:4000',
+    # В разработке PUBLIC_URL перекрывает localhost: с телефона по Wi-Fi
+    # (Expo Go) тестовая страница оплаты должна открываться по адресу ПК,
+    # например http://192.168.0.42:4000. На stage и prod не действует.
+    'public_url': 'https://api.stroyapp.kz' if is_prod else '' if is_stage
+                  else (os.environ.get('PUBLIC_URL', '').strip().rstrip('/') or 'http://localhost:4000'),
 
     'db': {
         'host': os.environ.get('DB_HOST', 'localhost'),

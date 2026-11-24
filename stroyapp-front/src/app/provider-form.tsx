@@ -1,6 +1,6 @@
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Keyboard, StyleSheet, Text, View, type TextInput } from 'react-native';
+import { Keyboard, StyleSheet, Text, View, type TextInputInstance } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { ApiError, dictsApi, providersApi, subscriptionApi } from '@/api';
@@ -146,9 +146,9 @@ export default function ProviderFormScreen() {
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
 
-  const nameRef = useRef<TextInput>(null);
-  const latRef = useRef<TextInput>(null);
-  const lngRef = useRef<TextInput>(null);
+  const nameRef = useRef<TextInputInstance>(null);
+  const latRef = useRef<TextInputInstance>(null);
+  const lngRef = useRef<TextInputInstance>(null);
 
   // Категории переключают быстрее, чем отвечает сервер: показываем атрибуты
   // только последнего запроса, иначе к новой категории приедут чужие.

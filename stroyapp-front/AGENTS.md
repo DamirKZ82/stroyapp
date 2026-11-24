@@ -1,8 +1,8 @@
 # StroyApp mobile — правила кода
 
-Expo SDK 57, React Native 0.86, expo-router, TypeScript 6. **Expo сильно
+Expo SDK 58, React Native 0.88, expo-router, TypeScript 6. **Expo сильно
 изменился**: прежде чем писать код с незнакомым API, сверься с версионной
-документацией https://docs.expo.dev/versions/v57.0.0/ и с типами в
+документацией https://docs.expo.dev/versions/v58.0.0/ и с типами в
 `node_modules` (они — истина для установленной версии).
 
 Интерфейс устроен «как в iduken» (`D:\Projects\iduken\iduken-mobile`):

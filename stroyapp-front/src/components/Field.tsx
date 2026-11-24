@@ -6,6 +6,7 @@ import {
   Text,
   TextInput,
   View,
+  type TextInputInstance,
   type TextInputProps,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -76,7 +77,7 @@ interface InputProps extends TextInputProps {
  * своё поле один раз, когда монтируется сама, а поля форм и шторок
  * появляются позже — панель не показывалась бы вовсе.
  */
-export const Input = forwardRef<TextInput, InputProps>(function Input(
+export const Input = forwardRef<TextInputInstance, InputProps>(function Input(
   { invalid, style, multiline, keyboardType, ...rest },
   ref,
 ) {
